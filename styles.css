@@ -1,0 +1,51 @@
+:root{--bg:#0a0a0a;--fg:#e6e6e6;--muted:#9a9a9a;--link:#8fd3ff;--accent:#e6e6e6}
+*{box-sizing:border-box}
+html{margin:0;padding:0;background:var(--bg)}
+body{margin:0 auto;padding:0;max-width:535px;background:var(--bg);color:var(--fg);font:14px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+img{max-width:100%;height:auto;image-rendering:pixelated}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.banner{display:flex;align-items:center;gap:8px;margin:0;padding:8px;border-bottom:1px solid #222}
+.banner img{display:block;height:auto;width:auto}
+.banner .title{font-size:var(--banner-h,64px);line-height:1;margin:0;color:var(--accent);white-space:nowrap}
+
+.head{display:block;width:100%;margin:0;padding:8px;border-bottom:1px solid #222}
+.head h1{margin:0 0 1px 0;font-size:16px}
+.tag{margin:0;color:var(--muted)}
+.nav{margin-top:4px}
+.nav .sep{color:#444;margin:0 4px}
+
+.backbar{display:block;width:100%;margin:0;padding:8px;border-bottom:1px solid #222;color:#bdbdbd}
+.backbar a{color:var(--link)}
+
+.container{padding:6px 8px}
+.hacklist{list-style:none;padding-left:0;margin:4px 0}
+.hack-item{margin:2px 0;display:flex;align-items:flex-start;gap:4px}
+.hack-item::before{content:"- ";color:var(--fg)}
+.toggle{cursor:pointer;color:var(--muted);user-select:none;margin-right:3px}
+.hack{display:inline-block}
+.preview{display:none;margin:2px 0 4px 18px;max-width:400px;width:400px;object-fit:cover}
+.preview.show{display:block}
+.grayscale{filter:grayscale(100%)}
+.when{color:var(--muted);margin-right:6px}
+.where{color:var(--muted);margin-left:4px}
+
+.years{list-style:"# ";padding-left:18px;margin:4px 0}
+.yeartag{display:inline-block;padding:0 3px;margin-right:4px;border:1px solid #333;color:#cfcfcf}
+
+.rule{border:0;border-top:1px dashed #333;margin:8px 0}
+.entry h3{margin:6px 0 3px 0;font-size:15px}
+.entry figure{margin:3px 0}
+.entry figcaption{color:var(--muted);font-size:12px;margin-top:2px}
+.meta{color:var(--muted);margin:4px 0}
+.meta div{margin:1px 0}
+
+h2{margin:6px 0 4px 0}
+h3{margin:6px 0 3px 0}
+p{margin:4px 0;text-align:justify}
+figure{margin:4px 0}
+
+.foot{display:block;width:100%;margin:0;padding:8px;border-top:1px solid #222;color:#bdbdbd}
+
+.contact-email{display:block;text-align:center;margin:4px 0} 

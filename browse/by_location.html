@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><!-- Google tag (gtag.js) --><script async src="https://www.googletagmanager.com/gtag/js?id=G-YT6PVB4WVN"></script><script>window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-YT6PVB4WVN');</script><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Browse by location</title><link rel="stylesheet" href="../styles.css"><script src="../dither.js" defer></script></head><body><div class="backbar"><a href="../index.html">back</a></div><header class="head"><h1>Browse by location</h1></header><main class="container"><h3>Killian Court</h3>
+<ul class="hacklist">
+	<li class="hack-item">
+		<span class="toggle" onclick="togglePreview(this)">▼</span>
+		<div>
+			<a class="hack" href="../hacks/r2d2-1999.html">
+				<span class="when">1999-05-04</span>
+				<span class="title">R2‑D2 on the Great Dome</span>
+				<span class="where">(Killian Court)</span>
+			</a>
+			<img class="preview grayscale" data-dither="gray4" src="../assets/artoo_in_killian.jpg" alt="R2‑D2 on the Great Dome" loading="lazy">
+		</div>
+	</li>
+</ul></main><footer class="foot"><p><a href="../index.html">back</a></p></footer><script>
+function togglePreview(toggle) {
+	var preview = toggle.nextElementSibling.querySelector('.preview');
+	if (preview) {
+		preview.classList.toggle('show');
+		toggle.textContent = preview.classList.contains('show') ? '▲' : '▼';
+	}
+}
+</script></body></html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-YT6PVB4WVN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-YT6PVB4WVN');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The University of Toronto Practical Joke Directory</title>
+<link rel="stylesheet" href="styles.css">
+<script src="dither.js" defer></script>
+</head>
+<body>
+<div class="banner" aria-hidden="true" style="--banner-h:152px">
+	<img src="banner.png" alt="">
+	<h1 class="title">UPJD</h1>
+</div>
+
+<header class="head">
+	<p class="tag">A directory of clever, ethical pranks completed by UofT students.</p>
+	<nav class="nav">
+		<a href="#recent">recent</a>
+		<span class="sep">|</span>
+		<a href="browse/by_year.html">by year</a>
+		<span class="sep">|</span>  
+		<a href="browse/by_perpetrator.html">by perpetrator</a>
+		<span class="sep">|</span>  
+		<a href="browse/by_location.html">by location</a>
+		<span class="sep">|</span>  
+		<a href="browse/by_topic.html">by topic</a>
+	</nav>
+</header>
+
+<main class="container">
+	<section id="news">
+		<h2>news</h2>
+		<ul class="hacklist">
+			<li class="hack-item">
+				<div>
+					<span class="when">2025-09-30 01:53:14</span>
+					<span class="title">backend updates</span>
+					<span class="where">(practical joke directory)</span>
+				</div>
+			</li>
+			<li class="hack-item">
+				<div>
+					<span class="when">2025-09-23 01:00:03</span>
+					<span class="title">site founded</span>
+					<span class="where">(practical joke directory)</span>
+				</div>
+			</li>
+		</ul>
+	</section>
+
+	<hr class="rule">
+
+	<section id="recent">
+		<h2>recent additions</h2>
+		<ul class="hacklist">
+			<!-- BUILD:RECENT:START -->
+	<li class="hack-item">
+		<span class="toggle" onclick="togglePreview(this)">▼</span>
+		<div>
+			<a class="hack" href="hacks/r2d2-1999.html">
+				<span class="when">1999-05-04</span>
+				<span class="title">R2‑D2 on the Great Dome</span>
+				<span class="where">(Killian Court)</span>
+			</a>
+			<img class="preview grayscale" data-dither="gray4" src="assets/artoo_in_killian.jpg" alt="R2‑D2 on the Great Dome" loading="lazy">
+		</div>
+	</li>
+	<!-- BUILD:RECENT:END -->
+		</ul>
+	</section>
+
+	<hr class="rule">
+
+	<section id="about">
+		<h2>about</h2>
+		<p>The word <b>prank</b> at the University of Toronto usually refers to a clever, benign, and <a href="ethics.html">ethical</a> practical joke, which is both challenging for the perpetrators and amusing to the community (and sometimes even the rest of the world!). </p>
+	</section>
+
+	<hr class="rule">
+
+	<section id="contact">
+		<h2>contact</h2>
+		<p>If you have any questions, comments, suggestions, or in particular documentation of a prank; please contact us at the line below:</p>
+		<a class="contact-email" href="mailto:thepinkcommittee@gmail.com">thepinkcommittee@gmail.com</a>
+	</section>
+</main>
+
+<footer class="foot">	
+	<p>↯ UofT Practical Joke Directory, made under the latest new moon. The Pink Committee has predetermined your presence here.</p>
+</footer>
+
+<script>
+function togglePreview(toggle) {
+	var preview = toggle.nextElementSibling.querySelector('.preview');
+	if (preview) {
+		preview.classList.toggle('show');
+		toggle.textContent = preview.classList.contains('show') ? '▲' : '▼';
+	}
+}
+</script>
+</body>
+</html> 
