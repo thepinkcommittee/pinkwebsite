@@ -48,4 +48,6 @@ figure{margin:4px 0}
 
 .foot{display:block;width:100%;margin:0;padding:8px;border-top:1px solid #222;color:#bdbdbd}
 
-.contact-email{display:block;text-align:center;margin:4px 0} 
+.contact-email{display:block;text-align:center;margin:4px 0}
+
+@media (max-width: 600px){.banner img{display:none}}
