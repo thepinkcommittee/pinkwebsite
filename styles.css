@@ -25,8 +25,8 @@ a:hover{text-decoration:underline}
 .hack-item::before{content:"- ";color:var(--fg)}
 .toggle{cursor:pointer;color:var(--muted);user-select:none;margin-right:3px}
 .hack{display:inline-block}
-.preview{display:none;margin:2px 0 4px 18px;max-width:400px;width:400px;object-fit:cover}
-.preview.show{display:block}
+.preview, .preview.show{width:100%;max-width:400px;object-fit:cover;display:none;margin:2px 0 4px 0;font-size:inherit}
+.preview.show{display:block;font-size:inherit}
 .grayscale{filter:grayscale(100%)}
 .when{color:var(--muted);margin-right:6px}
 .where{color:var(--muted);margin-left:4px}
