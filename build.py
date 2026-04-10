@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os, re, html, random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -18,6 +18,7 @@ NEW_ENTRY_STEMS_ENV = 'PINK_NEW_ENTRY_STEMS'
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$")
+FALLBACK_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s+06:09:\d{2}$")
 NEWS_SECTION_LIST_RE = re.compile(r'(<section id="news">[\s\S]*?<ul class="hacklist">)([\s\S]*?)(</ul>)', re.S)
 NEWS_ITEM_RE = re.compile(
 	r'<li class="hack-item"(?P<attrs>[^>]*)>\s*<div>\s*<span class="when">(?P<when>.*?)</span>\s*<span class="title">(?P<title>.*?)</span>\s*<span class="where">\((?P<where>.*?)\)</span>\s*</div>\s*</li>',
@@ -45,6 +46,19 @@ def normalize_news_timestamp(raw_timestamp, fallback_date=''):
 	if not timestamp and DATE_RE.match(fallback_date):
 		return f"{fallback_date} {fallback_news_time()}"
 	return timestamp
+
+
+def adjust_pr_creation_timestamp(raw_timestamp):
+	timestamp = normalize_news_timestamp(raw_timestamp)
+	if not DATETIME_RE.match(timestamp):
+		return timestamp
+	if FALLBACK_DATETIME_RE.match(timestamp):
+		return timestamp
+	try:
+		dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+		return (dt - timedelta(hours=4)).strftime('%Y-%m-%d %H:%M:%S')
+	except ValueError:
+		return timestamp
 
 
 def news_sort_key(timestamp):
@@ -318,7 +332,7 @@ def build():
 	news_end = '<!-- BUILD:NEWS:END -->'
 	news_indent = '\t\t\t\t'
 	new_entry_stems = parse_csv_env(os.getenv(NEW_ENTRY_STEMS_ENV, ''))
-	news_timestamp = os.getenv(NEWS_TIMESTAMP_ENV, '').strip()
+	news_timestamp = adjust_pr_creation_timestamp(os.getenv(NEWS_TIMESTAMP_ENV, '').strip())
 	entries_by_title = {(m.get('title', '') or '').strip().lower(): m for m in entries if (m.get('title', '') or '').strip()}
 	news_section_match = NEWS_SECTION_LIST_RE.search(idx)
 	existing_news_content = ''
