@@ -318,15 +318,29 @@ def extract_nonempty_lines(text: str) -> List[str]:
     return [line.strip() for line in normalized.splitlines() if line.strip()]
 
 
+def match_prefix_line_count(lines: List[str], expected_text: str) -> int:
+    expected_norm = normalize_text_for_comparison(expected_text)
+    if not expected_norm:
+        return 0
+
+    for count in range(1, len(lines) + 1):
+        joined_prefix = " ".join(lines[:count])
+        if normalize_text_for_comparison(joined_prefix) == expected_norm:
+            return count
+    return 0
+
+
 def has_required_submission_consent(payload: Dict, allow_extra_lines: bool = False) -> bool:
     lines = extract_nonempty_lines(extract_plain_text_body(payload))
     if not lines:
         return False
-    if normalize_text_for_comparison(lines[0]) != normalize_text_for_comparison(REQUIRED_CONSENT_TEXT):
+
+    consent_line_count = match_prefix_line_count(lines, REQUIRED_CONSENT_TEXT)
+    if consent_line_count == 0:
         return False
     if allow_extra_lines:
         return True
-    return len(lines) == 1
+    return consent_line_count == len(lines)
 
 
 def has_hidden_codeword_bypass(payload: Dict, allow_extra_lines: bool = False) -> bool:
@@ -337,21 +351,23 @@ def has_hidden_codeword_bypass(payload: Dict, allow_extra_lines: bool = False) -
     lines = extract_nonempty_lines(extract_plain_text_body(payload))
     if not lines:
         return False
-    if not allow_extra_lines and len(lines) != 1:
-        return False
 
-    affirmation_line = lines[0]
-    match = re.match(rf"^(?P<consent>.*?)(?:\\s+){re.escape(codeword)}\\s*$", affirmation_line)
-    if not match:
+    bypass_line_count = match_prefix_line_count(lines, f"{REQUIRED_CONSENT_TEXT} {codeword}")
+    if bypass_line_count == 0:
         return False
-
-    consent_text = match.group("consent").strip()
-    return normalize_text_for_comparison(consent_text) == normalize_text_for_comparison(REQUIRED_CONSENT_TEXT)
+    if allow_extra_lines:
+        return True
+    return bypass_line_count == len(lines)
 
 
 def parse_edit_directives(payload: Dict) -> tuple[List[Dict[str, str]], List[str]]:
     lines = extract_nonempty_lines(extract_plain_text_body(payload))
-    directive_lines = lines[1:] if lines else []
+    directive_start = match_prefix_line_count(lines, REQUIRED_CONSENT_TEXT)
+    codeword = (os.getenv(BYPASS_CODEWORD_ENV) or "").strip()
+    if codeword:
+        directive_start = max(directive_start, match_prefix_line_count(lines, f"{REQUIRED_CONSENT_TEXT} {codeword}"))
+
+    directive_lines = lines[directive_start:] if directive_start > 0 else []
     directives: List[Dict[str, str]] = []
     invalid_lines: List[str] = []
 
