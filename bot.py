@@ -26,8 +26,8 @@ ALLOWED_HACK_EXTENSIONS = {".hack"}
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 ALLOWED_EXTENSIONS = ALLOWED_HACK_EXTENSIONS.union(ALLOWED_IMAGE_EXTENSIONS)
 ALLOWED_EXTENSIONS_DISPLAY = ", ".join(sorted(ALLOWED_EXTENSIONS))
-REJECTED_COMMENT_MARKER = "BOT: rejected notification sent"
 ACCEPTED_BODY_MARKER = "<!-- pink-bot-accepted-notified -->"
+REJECTED_BODY_MARKER = "<!-- pink-bot-rejected-notified -->"
 SUBJECT_RECEIVED = "pinkwebsite: received"
 SUBJECT_SUBMISSION_FAILED = "pinkwebsite: submission failed"
 SUBJECT_PR_REQUEST_MADE = "pinkwebsite: pr request made"
@@ -162,17 +162,24 @@ def validate_edit_request_targets(
 
 
 def build_standard_email_body(status: str, message: str, details: Optional[str] = None) -> str:
-    lines = [
-        "Hello,",
-        "",
-        f"status: {status}",
-        "",
-        message.strip(),
+    normalized_status = " ".join((status or "update").split()).title()
+    message_text = (message or "").strip()
+    details_text = (details or "").strip()
+    signoff_timestamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+
+    sections = [
+        "This is an automated update from the PinkWebsite submission bot.",
+        f"Status: {normalized_status}",
     ]
-    if details:
-        lines.extend(["", details.strip()])
-    lines.extend(["", "Regards,", "PinkWebsite Submission Bot"])
-    return "\n".join(lines)
+    if message_text:
+        sections.append(message_text)
+    if details_text:
+        sections.append(f"Details:\n{details_text}")
+    sections.extend([
+        "Best regards,\nPinkWebsite Submission Bot",
+        f"Sent: {signoff_timestamp}",
+    ])
+    return "\n\n".join(sections)
 
 
 def get_env(name: str, required: bool = True) -> str:
@@ -765,11 +772,19 @@ def mark_acceptance_notified(pr):
     pr.edit(body=body)
 
 
-def has_rejection_comment(pr) -> bool:
-    for comment in pr.get_issue_comments():
-        if REJECTED_COMMENT_MARKER in comment.body:
-            return True
-    return False
+def has_rejection_marker(pr) -> bool:
+    return REJECTED_BODY_MARKER in (pr.body or "")
+
+
+def mark_rejection_notified(pr):
+    body = (pr.body or "").rstrip()
+    if REJECTED_BODY_MARKER in body:
+        return
+    if body:
+        body = f"{body}\n\n{REJECTED_BODY_MARKER}"
+    else:
+        body = REJECTED_BODY_MARKER
+    pr.edit(body=body)
 
 
 def pr_request_kind(pr) -> str:
@@ -825,7 +840,7 @@ def send_rejected_notifications(service, repo, base_branch: str):
         if not pr.head.ref.startswith("submission/"):
             continue
 
-        if has_rejection_comment(pr) or has_acceptance_marker(pr):
+        if has_rejection_marker(pr) or has_acceptance_marker(pr):
             continue
 
         message_id = extract_message_id_from_pr_body(pr.body)
@@ -856,7 +871,7 @@ def send_rejected_notifications(service, repo, base_branch: str):
                 f"Then to resubmit, send a NEW email (do not reply to this thread) with subject '{SUBJECT_EDIT if pr_request_kind(pr) == 'edit' else SUBJECT_SUBMISSION}' and include the updated attachments."
             ),
         )
-        pr.create_issue_comment(REJECTED_COMMENT_MARKER)
+        mark_rejection_notified(pr)
         print(f"Sent rejected email for PR #{pr.number}")
 
 
@@ -1071,10 +1086,11 @@ def process_message(service, repo, processed_label_id: str, pending_label_id: st
             references,
             SUBJECT_SUBMISSION_FAILED,
             "submission failed",
-            "You have not properly consented.",
+            "Your consent statement is missing or invalid.",
             (
-                f"Your email body must contain exactly: '{REQUIRED_CONSENT_TEXT}'.\n \n"
-                f"Review the submission instructions: {SUBMISSION_INSTRUCTIONS_URL}"
+                "Your email body must start with exactly this sentence:\n"
+                f"{REQUIRED_CONSENT_TEXT}\n\n"
+                f"Review the instructions here: {SUBMISSION_INSTRUCTIONS_URL}"
             ),
         )
         mark_message_processed(service, message_id, processed_label_id)
