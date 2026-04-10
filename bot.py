@@ -31,6 +31,8 @@ SUBJECT_PR_REQUEST_MADE = "pinkwebsite: pr request made"
 SUBJECT_ACCEPTED = "pinkwebsite: accepted"
 SUBJECT_REJECTED = "pinkwebsite: rejected"
 SUBJECT_SUBMISSION = "pinkwebsite: submission"
+SUBJECT_BOT_ERROR = "pinkwebsite: bot error"
+BOT_ALERT_EMAIL = "thepinkcommittee@gmail.com"
 
 
 def normalize_hack_front_matter(file_path: str):
@@ -401,13 +403,49 @@ def extract_message_id_from_pr_body(body: str) -> str:
     return ""
 
 
-def get_sender_from_message(service, message_id: str) -> str:
+def get_message_reply_context(service, message_id: str) -> tuple[Optional[Dict[str, str]], str]:
     try:
         message = service.users().messages().get(userId="me", id=message_id, format="metadata").execute()
-    except Exception:
-        return ""
+    except Exception as exc:
+        return None, f"Failed to fetch Gmail message metadata: {exc}"
+
     headers = parse_headers(message.get("payload", {}))
-    return headers.get("from", "")
+    sender = headers.get("from", "")
+    if not sender:
+        return None, "Missing sender in Gmail message headers"
+
+    thread_id = message.get("threadId", "")
+    references = headers.get("message-id") or headers.get("in-reply-to") or headers.get("references") or ""
+
+    return (
+        {
+            "sender": sender,
+            "thread_id": thread_id,
+            "references": references,
+        },
+        "",
+    )
+
+
+def notify_thread_context_error(service, pr_number: int, message_id: str, error_text: str):
+    details = (
+        f"PR number: #{pr_number}\n"
+        f"Original message ID: {message_id}\n"
+        f"Error: {error_text or 'Unknown error'}"
+    )
+    try:
+        send_standard_reply(
+            service,
+            BOT_ALERT_EMAIL,
+            None,
+            None,
+            SUBJECT_BOT_ERROR,
+            "bot error",
+            "Could not fetch original message context for threaded notification.",
+            details,
+        )
+    except Exception as exc:
+        print(f"Failed to send bot error alert email for PR #{pr_number}: {exc}")
 
 def has_acceptance_comment(pr) -> bool:
     for comment in pr.get_issue_comments():
@@ -437,16 +475,17 @@ def send_accepted_notifications(service, repo, base_branch: str):
             print(f"Skipping merged PR #{pr.number}: original message ID not found")
             continue
 
-        recipient = get_sender_from_message(service, message_id)
-        if not recipient:
-            print(f"Skipping merged PR #{pr.number}: sender email not found")
+        reply_context, context_error = get_message_reply_context(service, message_id)
+        if not reply_context:
+            notify_thread_context_error(service, pr.number, message_id, context_error)
+            print(f"Skipping merged PR #{pr.number}: reply context not found")
             continue
 
         send_standard_reply(
             service,
-            recipient,
-            None,
-            None,
+            reply_context["sender"],
+            reply_context.get("thread_id") or None,
+            reply_context.get("references") or None,
             SUBJECT_ACCEPTED,
             "accepted",
             "Your submission has been accepted and merged.",
@@ -470,16 +509,17 @@ def send_rejected_notifications(service, repo, base_branch: str):
             print(f"Skipping rejected PR #{pr.number}: original message ID not found")
             continue
 
-        recipient = get_sender_from_message(service, message_id)
-        if not recipient:
-            print(f"Skipping rejected PR #{pr.number}: sender email not found")
+        reply_context, context_error = get_message_reply_context(service, message_id)
+        if not reply_context:
+            notify_thread_context_error(service, pr.number, message_id, context_error)
+            print(f"Skipping rejected PR #{pr.number}: reply context not found")
             continue
 
         send_standard_reply(
             service,
-            recipient,
-            None,
-            None,
+            reply_context["sender"],
+            reply_context.get("thread_id") or None,
+            reply_context.get("references") or None,
             SUBJECT_REJECTED,
             "rejected",
             "Your submission PR was closed without merging.",
