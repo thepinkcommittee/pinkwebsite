@@ -89,13 +89,32 @@ def generate_backend_entry_id(source_stem, used_ids):
 def news_item_from_meta(meta, raw_timestamp):
 	title = (meta.get('title', '') or meta.get('_source_stem', '') or '').strip().lower()
 	location = (meta.get('location', '') or '').strip()
-	timestamp = normalize_news_timestamp(raw_timestamp, meta.get('date', ''))
+	entry_date = (meta.get('date', '') or '').strip()
+	timestamp = timestamp_for_added_item(entry_date, raw_timestamp)
 	return {
 		'title': title,
 		'location': location,
 		'timestamp': timestamp,
 		'is_added': True,
 	}
+
+
+def timestamp_for_added_item(entry_date, preferred_timestamp):
+	entry_date = (entry_date or '').strip()
+	preferred_timestamp = (preferred_timestamp or '').strip()
+
+	if not DATE_RE.match(entry_date):
+		return normalize_news_timestamp(preferred_timestamp, entry_date)
+
+	normalized_preferred = normalize_news_timestamp(preferred_timestamp, entry_date)
+	if DATETIME_RE.match(normalized_preferred):
+		time_part = normalized_preferred.split()[1]
+		return f"{entry_date} {time_part}"
+
+	if TIME_RE.match(normalized_preferred):
+		return f"{entry_date} {normalized_preferred}"
+
+	return normalize_news_timestamp(entry_date, entry_date)
 
 
 def parse_existing_news_items(news_content, entries_by_title):
@@ -112,8 +131,11 @@ def parse_existing_news_items(news_content, entries_by_title):
 		meta = entries_by_title.get(title)
 		if meta and 'location' in meta:
 			location = meta['location']
-		fallback_date = meta.get('date', '') if meta else ''
-		timestamp = normalize_news_timestamp(when_text, fallback_date)
+		entry_date = (meta.get('date', '') if meta else '') or ''
+		if is_added and DATE_RE.match(entry_date.strip()):
+			timestamp = timestamp_for_added_item(entry_date.strip(), when_text)
+		else:
+			timestamp = normalize_news_timestamp(when_text, entry_date)
 
 		items.append(
 			{
