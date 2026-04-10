@@ -1,6 +1,6 @@
 ## warning!
 > [!WARNING]
-> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION (PII) IN YOUR EMAIL.**
+> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION IN YOUR EMAIL.**
 > This includes information in your `.hack` file, image files, and even file names.
 > Submitted content may be made public when a pull request is created, and this cannot be fully reverted.
 
@@ -29,7 +29,7 @@ If you need more clarification refer to previous [submissions](https://github.co
 
 ## how to submit a new entry
 > [!WARNING]
-> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION (PII) IN YOUR EMAIL.**
+> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION IN YOUR EMAIL.**
 > This includes information in your `.hack` file, image files, and even file names.
 > Submitted content may be made public when a pull request is created, and this cannot be fully reverted.
 
