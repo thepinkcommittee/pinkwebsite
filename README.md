@@ -1,3 +1,4 @@
+## warning!
 > [!WARNING]
 > **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION (PII) IN YOUR EMAIL.**
 > This includes information in your `.hack` file, image files, and even file names.
@@ -27,6 +28,11 @@ More text after a divider.
 If you need more clarification refer to previous [submissions](https://github.com/thepinkcommittee/pinkwebsite/tree/main/entries) or email us at [thepinkcommittee@gmail.com](mailto:thepinkcommittee@gmail.com).
 
 ## how to submit a new entry
+> [!WARNING]
+> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION (PII) IN YOUR EMAIL.**
+> This includes information in your `.hack` file, image files, and even file names.
+> Submitted content may be made public when a pull request is created, and this cannot be fully reverted.
+
 Send an email to [thepinkcommittee@gmail.com](mailto:thepinkcommittee@gmail.com) with the subject:
 
 ```text
