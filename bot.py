@@ -406,7 +406,7 @@ def is_proceed_approval_text(text: str) -> bool:
         return False
     candidate = first_line.strip().strip("\"'`")
     matches = re.match(r"^proceed(?:\b|[.!?])", candidate, flags=re.I) is not None
-    print(f"    is_proceed_approval_text: first_line='{first_line}', candidate='{candidate}', matches={matches}")
+    # print(f"    is_proceed_approval_text: first_line='{first_line}', candidate='{candidate}', matches={matches}")
     return matches
 
 
@@ -491,7 +491,7 @@ def has_proceed_approval_reply(service, thread_id: str) -> bool:
 
     approval_email = canonicalize_email_address(APPROVAL_EMAIL)
     total_messages = len(thread.get("messages", []))
-    print(f"Checking thread {scramble_sensitive(thread_id)} with {total_messages} total message(s)")
+    # print(f"Checking thread {scramble_sensitive(thread_id)} with {total_messages} total message(s)")
     
     checked_messages = 0
     for message in thread.get("messages", []):
@@ -499,7 +499,7 @@ def has_proceed_approval_reply(service, thread_id: str) -> bool:
         headers = parse_headers(payload)
         sender_header = headers.get("from", "")
         sender_email = canonicalize_email_address(parseaddr(sender_header)[1])
-        print(f"  Message from: {scramble_sensitive(sender_email)} (raw_scrambled: {scramble_sensitive(sender_header)})")
+        # print(f"  Message from: {scramble_sensitive(sender_email)} (raw_scrambled: {scramble_sensitive(sender_header)})")
         
         if sender_email != approval_email:
             continue
@@ -507,14 +507,14 @@ def has_proceed_approval_reply(service, thread_id: str) -> bool:
 
         body_text = extract_plain_text_body(payload)
         snippet_text = (message.get("snippet") or "").strip()
-        print(f"  Approval sender message #{checked_messages}: body_text='{body_text[:50] if body_text else ''}...', snippet='{snippet_text[:50] if snippet_text else ''}...'")
+        # print(f"  Approval sender message #{checked_messages}: body_text='{body_text[:50] if body_text else ''}...', snippet='{snippet_text[:50] if snippet_text else ''}...'")
         
         if is_proceed_approval_text(body_text):
-            print(f"  Found proceed approval in body text!")
+            # print(f"  Found proceed approval in body text!")
             return True
 
         if is_proceed_approval_text(snippet_text):
-            print(f"  Found proceed approval in snippet text!")
+            # print(f"  Found proceed approval in snippet text!")
             return True
 
     print(

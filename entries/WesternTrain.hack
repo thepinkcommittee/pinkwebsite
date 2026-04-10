@@ -7,7 +7,7 @@ topic: roof-pranks, 2T5, Western-University
 ---
 
 !train_clear.jpg
-On November 1st, the Brute Force Committee added two additions to the roof of the Spencer Engineering Buildign at Western University: A banner reading "We're So BACK" and a train that moved back and forth across the roof. The banner faced north, while the train faced east and overlooked the quad area. 
+On November 1st, the Brute Force Committee added two additions to the roof of the Spencer Engineering Building at Western University: A banner reading "We're So BACK" and a train that moved back and forth across the roof. The banner faced north, while the train faced east and overlooked the quad area. 
 
 ===
 !train_fullroof.png
