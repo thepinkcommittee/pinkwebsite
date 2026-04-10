@@ -43,6 +43,7 @@ BYPASS_CODEWORD_ENV = "PINK_BYPASS_CODEWORD"
 SUBMISSION_INSTRUCTIONS_URL = "https://github.com/thepinkcommittee/pinkwebsite?tab=readme-ov-file#how-to-submit-a-new-entry"
 REQUIRED_CONSENT_TEXT = "i confirm that there is no personally identifiable information in the included files and that i have sent the correct files for submission. i understand that once i submit, unless there are invalid files resulting in submission rejection, my submission will be made public in the pinkwebsite github."
 EDIT_DIRECTIVE_RE = re.compile(r'^\s*(?P<filename>[^=]+?\.hack)\s*=\s*"(?P<title>[^"]+)"\s*,\s*"(?P<date>[^"]+)"\s*$', re.I)
+_MAILBOX_EMAIL_CACHE: Optional[str] = None
 
 
 def normalize_hack_front_matter(file_path: str):
@@ -225,34 +226,57 @@ def get_or_create_label(service, label_name: str) -> str:
     return label["id"]
 
 
+def get_mailbox_email(service) -> str:
+    global _MAILBOX_EMAIL_CACHE
+    if _MAILBOX_EMAIL_CACHE is not None:
+        return _MAILBOX_EMAIL_CACHE
+
+    env_email = get_env("GMAIL_USER", required=False).strip().casefold()
+    if env_email:
+        _MAILBOX_EMAIL_CACHE = env_email
+        return env_email
+
+    try:
+        profile = service.users().getProfile(userId="me").execute()
+        mailbox_email = (profile.get("emailAddress") or "").strip().casefold()
+    except Exception:
+        mailbox_email = ""
+
+    _MAILBOX_EMAIL_CACHE = mailbox_email
+    return mailbox_email
+
+
 def list_submission_messages(service, processed_label_name: str, pending_label_name: str) -> List[Dict]:
-    gmail_user = get_env("GMAIL_USER", required=False).strip()
+    mailbox_email = get_mailbox_email(service)
     query_parts = [
         f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}")',
         "in:inbox",
+        "is:unread",
         "has:attachment",
         f"-label:{processed_label_name}",
         f"-label:{pending_label_name}",
     ]
-    if gmail_user:
-        query_parts.append(f'-from:{gmail_user}')
+    if mailbox_email:
+        query_parts.append(f'-from:{mailbox_email}')
     query = " ".join(query_parts)
     response = service.users().messages().list(userId="me", q=query).execute()
     return response.get("messages", [])
 
 
-def list_pending_submission_messages(service, pending_label_name: str) -> List[Dict]:
-    gmail_user = get_env("GMAIL_USER", required=False).strip()
+def list_pending_submission_messages(service, pending_label_id: str) -> List[Dict]:
+    mailbox_email = get_mailbox_email(service)
     query_parts = [
         f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}")',
-        f"label:{pending_label_name}",
         "in:inbox",
-        "has:attachment",
     ]
-    if gmail_user:
-        query_parts.append(f'-from:{gmail_user}')
+    if mailbox_email:
+        query_parts.append(f'-from:{mailbox_email}')
     query = " ".join(query_parts)
-    response = service.users().messages().list(userId="me", q=query).execute()
+    response = service.users().messages().list(
+        userId="me",
+        q=query,
+        labelIds=[pending_label_id],
+    ).execute()
     return response.get("messages", [])
 
 
@@ -421,7 +445,17 @@ def has_proceed_approval_reply(service, thread_id: str) -> bool:
             continue
 
         body_text = extract_plain_text_body(payload)
-        if re.match(r"^\s*proceed[.!]?\s*$", body_text, flags=re.I):
+        lines = extract_nonempty_lines(body_text)
+        first_authored_line = ""
+        for line in lines:
+            if line.startswith(">"):
+                continue
+            if re.match(r"^(on\s.+wrote:|from:|sent:|to:|subject:)", line, flags=re.I):
+                break
+            first_authored_line = line
+            break
+
+        if re.match(r"^proceed[.!]?$", first_authored_line, flags=re.I):
             return True
 
     return False
@@ -1118,11 +1152,19 @@ def process_submission_to_pr(
 def process_message(service, repo, processed_label_id: str, pending_label_id: str, message):
     message_id = message["id"]
     full_message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+    label_ids = set(full_message.get("labelIds", []))
+    if processed_label_id in label_ids:
+        print(f"Skipping already processed message {message_id}")
+        return
+    if pending_label_id in label_ids:
+        print(f"Skipping already pending message {message_id}")
+        return
+
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
     sender_email = parseaddr(sender)[1].strip().casefold()
-    bot_email = get_env("GMAIL_USER", required=False).strip().casefold()
+    bot_email = get_mailbox_email(service)
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
     request_kind = submission_request_kind(headers)
@@ -1202,11 +1244,20 @@ def process_message(service, repo, processed_label_id: str, pending_label_id: st
 def process_pending_message(service, repo, processed_label_id: str, pending_label_id: str, message):
     message_id = message["id"]
     full_message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+    label_ids = set(full_message.get("labelIds", []))
+    if pending_label_id not in label_ids:
+        print(f"Skipping non-pending message {message_id}")
+        return
+    if processed_label_id in label_ids:
+        mark_message_processed_and_clear_pending(service, message_id, processed_label_id, pending_label_id)
+        print(f"Skipping already processed pending message {message_id}")
+        return
+
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
     sender_email = parseaddr(sender)[1].strip().casefold()
-    bot_email = get_env("GMAIL_USER", required=False).strip().casefold()
+    bot_email = get_mailbox_email(service)
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
     request_kind = submission_request_kind(headers)
@@ -1253,7 +1304,7 @@ def main():
         else:
             print("No new submission emails found")
 
-        pending_messages = list_pending_submission_messages(gmail_service, PENDING_APPROVAL_LABEL)
+        pending_messages = list_pending_submission_messages(gmail_service, pending_label_id)
         if pending_messages:
             print(f"Found {len(pending_messages)} pending submission(s) awaiting approval")
             for message in pending_messages:
