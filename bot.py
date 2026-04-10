@@ -175,7 +175,7 @@ def create_branch(repo, base_branch: str, branch_name: str):
     repo.create_git_ref(ref=ref, sha=source_sha)
 
 
-def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachments: List[Dict], sender: str, subject: str, message_id: str) -> str:
+def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachments: List[Dict], message_id: str) -> str:
     unique_paths = []
     for attachment in attachments:
         filename = attachment["filename"]
@@ -210,13 +210,13 @@ def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachme
             content = f.read()
         write_branch_file(repo, branch_name, gen_path.replace("\\", "/"), content, f"Update generated site file {gen_path}")
 
-    pr_title = f"New submission from {sender or 'unknown sender'}"
+    pr_title = "New submission"
     pr_body = (
-        f"Automated submission from {sender}\n"
-        f"Original subject: {subject}\n"
+        "Automated submission.\n"
         f"Original message ID: {message_id}\n"
-        f"\nThis pull request was created by the PinkWebsite submission bot."
+        "\nThis pull request was created by the PinkWebsite submission bot."
     )
+
     pr = repo.create_pull(
         title=pr_title,
         body=pr_body,
@@ -257,14 +257,22 @@ def mark_message_processed(service, message_id: str, label_id: str):
     ).execute()
 
 
-def extract_sender_from_pr_body(body: str) -> str:
+def extract_message_id_from_pr_body(body: str) -> str:
     if not body:
         return ""
-    match = re.search(r"Automated submission from\s*([^\n]+)", body)
+    match = re.search(r"Original message ID:\s*([^\n]+)", body)
     if match:
         return match.group(1).strip()
     return ""
 
+
+def get_sender_from_message(service, message_id: str) -> str:
+    try:
+        message = service.users().messages().get(userId="me", id=message_id, format="metadata").execute()
+    except Exception:
+        return ""
+    headers = parse_headers(message.get("payload", {}))
+    return headers.get("from", "")
 
 def has_acceptance_comment(pr) -> bool:
     for comment in pr.get_issue_comments():
@@ -289,7 +297,12 @@ def send_accepted_notifications(service, repo, base_branch: str):
         if has_acceptance_comment(pr):
             continue
 
-        recipient = extract_sender_from_pr_body(pr.body)
+        message_id = extract_message_id_from_pr_body(pr.body)
+        if not message_id:
+            print(f"Skipping merged PR #{pr.number}: original message ID not found")
+            continue
+
+        recipient = get_sender_from_message(service, message_id)
         if not recipient:
             print(f"Skipping merged PR #{pr.number}: sender email not found")
             continue
@@ -301,7 +314,7 @@ def send_accepted_notifications(service, repo, base_branch: str):
         )
         send_message(service, make_reply(subject, body_text, recipient, None, None))
         pr.create_issue_comment(ACCEPTED_COMMENT_MARKER)
-        print(f"Sent accepted email for PR #{pr.number} to {recipient}")
+        print(f"Sent accepted email for PR #{pr.number}")
 
 
 def send_rejected_notifications(service, repo, base_branch: str):
@@ -313,7 +326,12 @@ def send_rejected_notifications(service, repo, base_branch: str):
         if has_rejection_comment(pr) or has_acceptance_comment(pr):
             continue
 
-        recipient = extract_sender_from_pr_body(pr.body)
+        message_id = extract_message_id_from_pr_body(pr.body)
+        if not message_id:
+            print(f"Skipping rejected PR #{pr.number}: original message ID not found")
+            continue
+
+        recipient = get_sender_from_message(service, message_id)
         if not recipient:
             print(f"Skipping rejected PR #{pr.number}: sender email not found")
             continue
@@ -328,7 +346,7 @@ def send_rejected_notifications(service, repo, base_branch: str):
         )
         send_message(service, make_reply(subject, body_text, recipient, None, None))
         pr.create_issue_comment(REJECTED_COMMENT_MARKER)
-        print(f"Sent rejected email for PR #{pr.number} to {recipient}")
+        print(f"Sent rejected email for PR #{pr.number}")
 
 
 def process_message(service, repo, label_id: str, message):
@@ -344,17 +362,15 @@ def process_message(service, repo, label_id: str, message):
     if invalid_files:
         invalid_list = "\n".join(f"- {filename}" for filename in invalid_files)
         body_text = (
-            "email: the following submissions did not meet the submission requirements due to a filetype failure:\n"
+            "email: the following submissions did not meet the submission requirements because invalid file types were included:\n"
             f"{invalid_list}\n\n"
             f"Allowed files: {ALLOWED_EXTENSIONS_DISPLAY}"
         )
         reply = make_reply("pinkwebsite: submission failed", body_text, sender, thread_id, headers.get("message-id"))
         send_message(service, reply)
-
-        if not attachments:
-            mark_message_processed(service, message_id, label_id)
-            print(f"Processed message {message_id} with only invalid attachments")
-            return
+        mark_message_processed(service, message_id, label_id)
+        print(f"Rejected message {message_id} due to invalid attachments")
+        return
 
     if not attachments:
         body_text = (
@@ -381,7 +397,7 @@ def process_message(service, repo, label_id: str, message):
     base_branch = repo.default_branch
     branch_name = safe_branch_name(message_id)
     create_branch(repo, base_branch, branch_name)
-    pr_url = create_pr_for_attachments(repo, branch_name, base_branch, attachments, sender, subject, message_id)
+    pr_url = create_pr_for_attachments(repo, branch_name, base_branch, attachments, message_id)
 
     send_message(
         service,
