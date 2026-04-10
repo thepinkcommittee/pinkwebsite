@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import os
 import quopri
 import re
@@ -44,6 +45,14 @@ SUBMISSION_INSTRUCTIONS_URL = "https://github.com/thepinkcommittee/pinkwebsite?t
 REQUIRED_CONSENT_TEXT = "i confirm that there is no personally identifiable information in the included files and that i have sent the correct files for submission. i understand that once i submit, unless there are invalid files resulting in submission rejection, my submission will be made public in the pinkwebsite github."
 EDIT_DIRECTIVE_RE = re.compile(r'^\s*(?P<filename>[^=]+?\.hack)\s*=\s*"(?P<title>[^"]+)"\s*,\s*"(?P<date>[^"]+)"\s*$', re.I)
 _MAILBOX_EMAIL_CACHE: Optional[str] = None
+
+
+def scramble_sensitive(text: str) -> str:
+    """scramble sensitive information for debug logging"""
+    if not text:
+        return ""
+    salt = os.getenv(BYPASS_CODEWORD_ENV, "").encode()
+    return hashlib.sha256(salt + text.encode()).hexdigest()[:12]
 
 
 def normalize_hack_front_matter(file_path: str):
@@ -231,14 +240,14 @@ def get_mailbox_email(service) -> str:
     if _MAILBOX_EMAIL_CACHE is not None:
         return _MAILBOX_EMAIL_CACHE
 
-    env_email = get_env("GMAIL_USER", required=False).strip().casefold()
+    env_email = canonicalize_email_address(get_env("GMAIL_USER", required=False))
     if env_email:
         _MAILBOX_EMAIL_CACHE = env_email
         return env_email
 
     try:
         profile = service.users().getProfile(userId="me").execute()
-        mailbox_email = (profile.get("emailAddress") or "").strip().casefold()
+        mailbox_email = canonicalize_email_address(profile.get("emailAddress") or "")
     except Exception:
         mailbox_email = ""
 
@@ -251,7 +260,6 @@ def list_submission_messages(service, processed_label_name: str, pending_label_n
     query_parts = [
         f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}")',
         "in:inbox",
-        "is:unread",
         "has:attachment",
         f"-label:{processed_label_name}",
         f"-label:{pending_label_name}",
@@ -336,8 +344,31 @@ def extract_plain_text_body(payload: Dict) -> str:
     return decode_gmail_body_data(fallback_data).strip()
 
 
+def payload_has_any_attachment(payload: Dict) -> bool:
+    for part in collect_parts(payload):
+        if part.get("filename"):
+            return True
+    return False
+
+
 def normalize_text_for_comparison(text: str) -> str:
     return " ".join((text or "").split()).casefold()
+
+
+def canonicalize_email_address(email: str) -> str:
+    normalized = (email or "").strip().casefold()
+    if not normalized:
+        return ""
+
+    local_part, separator, domain = normalized.partition("@")
+    if not separator:
+        return normalized
+
+    if domain in {"gmail.com", "googlemail.com"}:
+        local_part = local_part.split("+", 1)[0]
+        domain = "gmail.com"
+
+    return f"{local_part}@{domain}"
 
 
 def submission_request_kind(headers: Dict[str, str]) -> str:
@@ -356,6 +387,27 @@ def normalize_email_body_text(text: str) -> str:
 def extract_nonempty_lines(text: str) -> List[str]:
     normalized = normalize_email_body_text(text)
     return [line.strip() for line in normalized.splitlines() if line.strip()]
+
+
+def extract_first_authored_line(text: str) -> str:
+    lines = extract_nonempty_lines(text)
+    for line in lines:
+        if line.startswith(">"):
+            continue
+        if re.match(r"^(on\s.+wrote:|from:|sent:|to:|subject:)", line, flags=re.I):
+            break
+        return line
+    return ""
+
+
+def is_proceed_approval_text(text: str) -> bool:
+    first_line = extract_first_authored_line(text)
+    if not first_line:
+        return False
+    candidate = first_line.strip().strip("\"'`")
+    matches = re.match(r"^proceed(?:\b|[.!?])", candidate, flags=re.I) is not None
+    print(f"    is_proceed_approval_text: first_line='{first_line}', candidate='{candidate}', matches={matches}")
+    return matches
 
 
 def match_prefix_line_count(lines: List[str], expected_text: str) -> int:
@@ -433,31 +485,42 @@ def has_proceed_approval_reply(service, thread_id: str) -> bool:
 
     try:
         thread = service.users().threads().get(userId="me", id=thread_id, format="full").execute()
-    except Exception:
+    except Exception as exc:
+        print(f"Failed to read thread {scramble_sensitive(thread_id)} while checking proceed approval: {exc}")
         return False
 
+    approval_email = canonicalize_email_address(APPROVAL_EMAIL)
+    total_messages = len(thread.get("messages", []))
+    print(f"Checking thread {scramble_sensitive(thread_id)} with {total_messages} total message(s)")
+    
+    checked_messages = 0
     for message in thread.get("messages", []):
         payload = message.get("payload", {})
         headers = parse_headers(payload)
         sender_header = headers.get("from", "")
-        sender_email = parseaddr(sender_header)[1].strip().casefold()
-        if sender_email != APPROVAL_EMAIL.casefold():
+        sender_email = canonicalize_email_address(parseaddr(sender_header)[1])
+        print(f"  Message from: {scramble_sensitive(sender_email)} (raw_scrambled: {scramble_sensitive(sender_header)})")
+        
+        if sender_email != approval_email:
             continue
+        checked_messages += 1
 
         body_text = extract_plain_text_body(payload)
-        lines = extract_nonempty_lines(body_text)
-        first_authored_line = ""
-        for line in lines:
-            if line.startswith(">"):
-                continue
-            if re.match(r"^(on\s.+wrote:|from:|sent:|to:|subject:)", line, flags=re.I):
-                break
-            first_authored_line = line
-            break
-
-        if re.match(r"^proceed[.!]?$", first_authored_line, flags=re.I):
+        snippet_text = (message.get("snippet") or "").strip()
+        print(f"  Approval sender message #{checked_messages}: body_text='{body_text[:50] if body_text else ''}...', snippet='{snippet_text[:50] if snippet_text else ''}...'")
+        
+        if is_proceed_approval_text(body_text):
+            print(f"  Found proceed approval in body text!")
             return True
 
+        if is_proceed_approval_text(snippet_text):
+            print(f"  Found proceed approval in snippet text!")
+            return True
+
+    print(
+        f"No proceed approval found in thread {scramble_sensitive(thread_id)}; "
+        f"checked {checked_messages} message(s) from approval sender out of {total_messages} total"
+    )
     return False
 
 
@@ -1163,16 +1226,22 @@ def process_message(service, repo, processed_label_id: str, pending_label_id: st
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
-    sender_email = parseaddr(sender)[1].strip().casefold()
+    sender_email = canonicalize_email_address(parseaddr(sender)[1])
     bot_email = get_mailbox_email(service)
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
+    in_reply_to = (headers.get("in-reply-to") or "").strip()
     request_kind = submission_request_kind(headers)
     allow_extra_lines = request_kind == "edit"
 
     if bot_email and sender_email == bot_email:
         mark_message_processed(service, message_id, processed_label_id)
         print(f"Skipping self-authored message {message_id}")
+        return
+
+    if in_reply_to and not payload_has_any_attachment(payload):
+        mark_message_processed(service, message_id, processed_label_id)
+        print(f"Skipping reply without attachments {message_id}")
         return
 
     bypass_approved = has_hidden_codeword_bypass(payload, allow_extra_lines=allow_extra_lines)
@@ -1256,7 +1325,7 @@ def process_pending_message(service, repo, processed_label_id: str, pending_labe
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
-    sender_email = parseaddr(sender)[1].strip().casefold()
+    sender_email = canonicalize_email_address(parseaddr(sender)[1])
     bot_email = get_mailbox_email(service)
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
