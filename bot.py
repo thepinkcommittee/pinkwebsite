@@ -210,11 +210,12 @@ def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachme
             content = f.read()
         write_branch_file(repo, branch_name, gen_path.replace("\\", "/"), content, f"Update generated site file {gen_path}")
 
-    pr_title = "New submission"
+    pr_title = f"New submission from {message_id}"
     pr_body = (
         "Automated submission.\n"
         f"Original message ID: {message_id}\n"
-        "\nThis pull request was created by the PinkWebsite submission bot."
+        "\n"
+        "This pull request was created by the PinkWebsite submission bot."
     )
 
     pr = repo.create_pull(
