@@ -6,6 +6,7 @@ import time
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import quote
 
 from github import Github, Auth
 from github.GithubException import UnknownObjectException
@@ -159,6 +160,32 @@ def is_valid_attachment(filename: str) -> bool:
 def attachment_target_dir(filename: str) -> str:
     extension = os.path.splitext(filename)[1].lower()
     return "entries" if extension in ALLOWED_HACK_EXTENSIONS else "assets"
+
+
+def build_repo_file_link(repo_full_name: str, branch_name: str, file_path: str) -> str:
+    encoded_path = quote(file_path, safe="/")
+    return f"https://github.com/{repo_full_name}/blob/{branch_name}/{encoded_path}"
+
+
+def build_attachment_links_markdown(repo_full_name: str, branch_name: str, attachment_paths: List[str]) -> str:
+    hack_lines = []
+    image_lines = []
+
+    for file_path in attachment_paths:
+        url = build_repo_file_link(repo_full_name, branch_name, file_path)
+        line = f"- [{file_path}]({url})"
+        extension = os.path.splitext(file_path)[1].lower()
+        if extension in ALLOWED_HACK_EXTENSIONS:
+            hack_lines.append(line)
+        else:
+            image_lines.append(line)
+
+    sections = ["#### .hack files"]
+    sections.extend(hack_lines or ["- none"])
+    sections.append("")
+    sections.append("#### image files")
+    sections.extend(image_lines or ["- none"])
+    return "\n".join(sections)
 
 
 def find_case_insensitive_duplicate_filenames(repo, base_branch: str, attachments: List[Dict]) -> List[str]:
@@ -333,9 +360,15 @@ def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachme
         write_branch_file(repo, branch_name, gen_path.replace("\\", "/"), content, f"Update generated site file {gen_path}")
 
     pr_title = f"New submission from {message_id}"
+    attachment_paths = [path for path, _ in unique_paths]
+    attachment_links_md = build_attachment_links_markdown(repo.full_name, branch_name, attachment_paths)
     pr_body = (
         "Automated submission.\n"
         f"Original message ID: {message_id}\n"
+        "\n"
+        "Submitted files from email:\n"
+        "\n"
+        f"{attachment_links_md}\n"
         "\n"
         "This pull request was created by the PinkWebsite submission bot."
     )

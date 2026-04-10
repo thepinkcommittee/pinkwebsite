@@ -1,6 +1,7 @@
-# DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION IN YOUR EMAIL. 
-
-# THIS INCLUDES INFORMATION IN YOUR .hack FILE, IMAGE FILES, OR EVEN IN THE NAME OF SAID FILES. IT WILL BE MADE PUBLIC WHEN A PULL REQUEST IS CREATED. THIS CANNOT BE REVERTED.
+> [!WARNING]
+> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION (PII) IN YOUR EMAIL.**
+> This includes information in your `.hack` file, image files, and even file names.
+> Submitted content may be made public when a pull request is created, and this cannot be fully reverted.
 
 ## content format: .hack
 Submissions should follow the format of the following example:
