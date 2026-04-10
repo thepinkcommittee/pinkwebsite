@@ -1,5 +1,6 @@
 import base64
 import os
+import quopri
 import re
 import subprocess
 import time
@@ -250,7 +251,17 @@ def decode_gmail_body_data(raw_data: str) -> str:
     try:
         padding = "=" * (-len(raw_data) % 4)
         decoded = base64.urlsafe_b64decode((raw_data + padding).encode("utf-8"))
-        return decoded.decode("utf-8", errors="replace")
+        text = decoded.decode("utf-8", errors="replace")
+
+        # Some clients send text/plain as quoted-printable. Decode only when
+        # quoted-printable artifacts are present to avoid changing normal text.
+        if re.search(r"=(?:\r?\n|[0-9A-Fa-f]{2})", text):
+            try:
+                text = quopri.decodestring(text.encode("utf-8", errors="replace")).decode("utf-8", errors="replace")
+            except Exception:
+                pass
+
+        return text
     except Exception:
         return ""
 
@@ -296,8 +307,15 @@ def submission_request_kind(headers: Dict[str, str]) -> str:
     return "submission"
 
 
+def normalize_email_body_text(text: str) -> str:
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    # Unwrap quoted-printable soft line breaks.
+    return normalized.replace("=\n", "")
+
+
 def extract_nonempty_lines(text: str) -> List[str]:
-    return [line.strip() for line in (text or "").splitlines() if line.strip()]
+    normalized = normalize_email_body_text(text)
+    return [line.strip() for line in normalized.splitlines() if line.strip()]
 
 
 def has_required_submission_consent(payload: Dict, allow_extra_lines: bool = False) -> bool:
