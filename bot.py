@@ -226,16 +226,32 @@ def get_or_create_label(service, label_name: str) -> str:
 
 
 def list_submission_messages(service, processed_label_name: str, pending_label_name: str) -> List[Dict]:
-    query = (
-        f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}") '
-        f'-label:{processed_label_name} -label:{pending_label_name}'
-    )
+    gmail_user = get_env("GMAIL_USER", required=False).strip()
+    query_parts = [
+        f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}")',
+        "in:inbox",
+        "has:attachment",
+        f"-label:{processed_label_name}",
+        f"-label:{pending_label_name}",
+    ]
+    if gmail_user:
+        query_parts.append(f'-from:{gmail_user}')
+    query = " ".join(query_parts)
     response = service.users().messages().list(userId="me", q=query).execute()
     return response.get("messages", [])
 
 
 def list_pending_submission_messages(service, pending_label_name: str) -> List[Dict]:
-    query = f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}") label:{pending_label_name}'
+    gmail_user = get_env("GMAIL_USER", required=False).strip()
+    query_parts = [
+        f'(subject:"{SUBJECT_SUBMISSION}" OR subject:"{SUBJECT_EDIT}")',
+        f"label:{pending_label_name}",
+        "in:inbox",
+        "has:attachment",
+    ]
+    if gmail_user:
+        query_parts.append(f'-from:{gmail_user}')
+    query = " ".join(query_parts)
     response = service.users().messages().list(userId="me", q=query).execute()
     return response.get("messages", [])
 
@@ -1105,10 +1121,17 @@ def process_message(service, repo, processed_label_id: str, pending_label_id: st
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
+    sender_email = parseaddr(sender)[1].strip().casefold()
+    bot_email = get_env("GMAIL_USER", required=False).strip().casefold()
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
     request_kind = submission_request_kind(headers)
     allow_extra_lines = request_kind == "edit"
+
+    if bot_email and sender_email == bot_email:
+        mark_message_processed(service, message_id, processed_label_id)
+        print(f"Skipping self-authored message {message_id}")
+        return
 
     bypass_approved = has_hidden_codeword_bypass(payload, allow_extra_lines=allow_extra_lines)
 
@@ -1182,9 +1205,16 @@ def process_pending_message(service, repo, processed_label_id: str, pending_labe
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
+    sender_email = parseaddr(sender)[1].strip().casefold()
+    bot_email = get_env("GMAIL_USER", required=False).strip().casefold()
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
     request_kind = submission_request_kind(headers)
+
+    if bot_email and sender_email == bot_email:
+        mark_submission_processed_state(service, message_id, processed_label_id, pending_label_id, True)
+        print(f"Skipping self-authored pending message {message_id}")
+        return
 
     if not has_proceed_approval_reply(service, thread_id):
         print(f"Pending message {message_id}: waiting for proceed approval")
