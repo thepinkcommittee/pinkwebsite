@@ -11,7 +11,7 @@ BROWSE_DIR = ROOT / 'browse'
 INDEX_FILE = ROOT / 'index.html'
 
 FRONT_RE = re.compile(r"^(.*)\n---\n(.*)$", re.S)
-IMG_TOKEN = re.compile(r"!([\w\-\.@]+)")
+IMG_TOKEN = re.compile(r"!([^\n!]+?\.(?:png|jpg|jpeg|gif|webp|svg))", re.I)
 NON_ID_CHAR_RE = re.compile(r"[^a-z0-9]+")
 NEWS_TIMESTAMP_ENV = 'PINK_NEWS_TIMESTAMP'
 NEW_ENTRY_STEMS_ENV = 'PINK_NEW_ENTRY_STEMS'
@@ -145,7 +145,7 @@ def parse_hack(text):
 		meta[key] = v.strip()
 	meta['body'] = body.strip()
 	# collect inline assets
-	assets = IMG_TOKEN.findall(meta['body'])
+	assets = [asset.strip() for asset in IMG_TOKEN.findall(meta['body'])]
 	meta['assets_inline'] = assets
 	# pick preview = first image if present
 	meta['preview'] = assets[0] if assets else ''
@@ -157,21 +157,27 @@ def body_with_images_rendered(body):
 	body = re.sub(r'^===\s*$', '<hr class="rule">', body, flags=re.MULTILINE)
 	
 	# Replace !filename with figure+img tags
-	def repl(m):
-		fname = m.group(1)
+	def repl(fname):
+		fname = fname.strip()
 		src = f"../assets/{fname}"
 		return f"<figure>\n\t<img src=\"{src}\" data-dither=\"gray4\" alt=\"\" loading=\"lazy\">\n</figure>"
+
+	def append_paragraphs(text, out):
+		paras = [
+			f"<p>{html.escape(x.strip())}</p>" if x.strip() and not x.strip().startswith('<hr') else x.strip()
+			for x in text.split('\n\n')
+			if x.strip()
+		]
+		out.extend(paras)
+
 	# escape non-image text paragraphs; keep double-newline as paragraph breaks
-	parts = [p for p in re.split(r"(\![\w\-\.@]+)", body)]
 	out = []
-	for part in parts:
-		if not part:
-			continue
-		if part.startswith('!'):
-			out.append(repl(re.match(r"\!([\w\-\.@]+)", part)))
-		else:
-			paras = [f"<p>{html.escape(x.strip())}</p>" if x.strip() and not x.strip().startswith('<hr') else x.strip() for x in part.split('\n\n') if x.strip()]
-			out.extend(paras)
+	last_end = 0
+	for match in IMG_TOKEN.finditer(body):
+		append_paragraphs(body[last_end:match.start()], out)
+		out.append(repl(match.group(1)))
+		last_end = match.end()
+	append_paragraphs(body[last_end:], out)
 	return "\n".join(out)
 
 

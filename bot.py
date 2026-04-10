@@ -450,7 +450,7 @@ def send_accepted_notifications(service, repo, base_branch: str):
             SUBJECT_ACCEPTED,
             "accepted",
             "Your submission has been accepted and merged.",
-            "The website will update shortly.",
+            f"PR URL: {pr.html_url}\nThe website will update shortly.",
         )
         pr.create_issue_comment(ACCEPTED_COMMENT_MARKER)
         print(f"Sent accepted email for PR #{pr.number}")
