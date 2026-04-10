@@ -567,8 +567,8 @@ def send_rejected_notifications(service, repo, base_branch: str):
             "rejected",
             "Your submission PR was closed without merging.",
             (
-                f"Review the PR here: {pr.html_url}\n"
-                f"To resubmit, send a NEW email (do not reply to this thread) with subject '{SUBJECT_SUBMISSION}' and include the updated attachments."
+                f"Please review and make the changes suggested in the PR here: {pr.html_url}\n"
+                f"Then to resubmit, send a NEW email (do not reply to this thread) with subject '{SUBJECT_SUBMISSION}' and include the updated attachments."
             ),
         )
         pr.create_issue_comment(REJECTED_COMMENT_MARKER)
