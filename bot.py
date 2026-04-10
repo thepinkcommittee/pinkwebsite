@@ -4,6 +4,7 @@ import re
 import subprocess
 import time
 from email.message import EmailMessage
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import quote
@@ -20,6 +21,7 @@ GMAIL_SCOPES = [
 ]
 
 ATTACHMENT_LABEL = "pinkwebsite-processed"
+PENDING_APPROVAL_LABEL = "pinkwebsite-awaiting-approval"
 ALLOWED_HACK_EXTENSIONS = {".hack"}
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 ALLOWED_EXTENSIONS = ALLOWED_HACK_EXTENSIONS.union(ALLOWED_IMAGE_EXTENSIONS)
@@ -34,6 +36,8 @@ SUBJECT_REJECTED = "pinkwebsite: rejected"
 SUBJECT_SUBMISSION = "pinkwebsite: submission"
 SUBJECT_BOT_ERROR = "pinkwebsite: bot error"
 BOT_ALERT_EMAIL = "thepinkcommittee@gmail.com"
+APPROVAL_EMAIL = "thepinkcommittee@gmail.com"
+BYPASS_CODEWORD_ENV = "PINK_BYPASS_CODEWORD"
 SUBMISSION_INSTRUCTIONS_URL = "https://github.com/thepinkcommittee/pinkwebsite?tab=readme-ov-file#how-to-submit-a-new-entry"
 REQUIRED_CONSENT_TEXT = "i confirm that there is no personally identifiable information in the included files and that i have sent the correct files for submission. i understand that once i submit, unless there are invalid files resulting in submission rejection, my submission will be made public in the pinkwebsite github."
 
@@ -133,8 +137,14 @@ def get_or_create_label(service, label_name: str) -> str:
     return label["id"]
 
 
-def list_submission_messages(service, label_name: str) -> List[Dict]:
-    query = f'subject:"{SUBJECT_SUBMISSION}" -label:{label_name}'
+def list_submission_messages(service, processed_label_name: str, pending_label_name: str) -> List[Dict]:
+    query = f'subject:"{SUBJECT_SUBMISSION}" -label:{processed_label_name} -label:{pending_label_name}'
+    response = service.users().messages().list(userId="me", q=query).execute()
+    return response.get("messages", [])
+
+
+def list_pending_submission_messages(service, pending_label_name: str) -> List[Dict]:
+    query = f'subject:"{SUBJECT_SUBMISSION}" label:{pending_label_name}'
     response = service.users().messages().list(userId="me", q=query).execute()
     return response.get("messages", [])
 
@@ -192,6 +202,47 @@ def normalize_text_for_comparison(text: str) -> str:
 def has_required_submission_consent(payload: Dict) -> bool:
     body_text = extract_plain_text_body(payload)
     return normalize_text_for_comparison(body_text) == normalize_text_for_comparison(REQUIRED_CONSENT_TEXT)
+
+
+def has_hidden_codeword_bypass(payload: Dict) -> bool:
+    codeword = (os.getenv(BYPASS_CODEWORD_ENV) or "").strip()
+    if not codeword:
+        return False
+
+    body_text = extract_plain_text_body(payload).strip()
+    if not body_text:
+        return False
+
+    match = re.match(rf"^(?P<consent>.*?)(?:\\s+){re.escape(codeword)}\\s*$", body_text, flags=re.S)
+    if not match:
+        return False
+
+    consent_text = match.group("consent").strip()
+    return normalize_text_for_comparison(consent_text) == normalize_text_for_comparison(REQUIRED_CONSENT_TEXT)
+
+
+def has_proceed_approval_reply(service, thread_id: str) -> bool:
+    if not thread_id:
+        return False
+
+    try:
+        thread = service.users().threads().get(userId="me", id=thread_id, format="full").execute()
+    except Exception:
+        return False
+
+    for message in thread.get("messages", []):
+        payload = message.get("payload", {})
+        headers = parse_headers(payload)
+        sender_header = headers.get("from", "")
+        sender_email = parseaddr(sender_header)[1].strip().casefold()
+        if sender_email != APPROVAL_EMAIL.casefold():
+            continue
+
+        body_text = extract_plain_text_body(payload)
+        if re.match(r"^\s*proceed[.!]?\s*$", body_text, flags=re.I):
+            return True
+
+    return False
 
 
 def is_valid_attachment(filename: str) -> bool:
@@ -469,6 +520,35 @@ def mark_message_processed(service, message_id: str, label_id: str):
     ).execute()
 
 
+def mark_message_pending_approval(service, message_id: str, pending_label_id: str):
+    service.users().messages().modify(
+        userId="me",
+        id=message_id,
+        body={
+            "removeLabelIds": ["UNREAD"],
+            "addLabelIds": [pending_label_id],
+        },
+    ).execute()
+
+
+def mark_message_processed_and_clear_pending(service, message_id: str, processed_label_id: str, pending_label_id: str):
+    service.users().messages().modify(
+        userId="me",
+        id=message_id,
+        body={
+            "removeLabelIds": ["UNREAD", pending_label_id],
+            "addLabelIds": [processed_label_id],
+        },
+    ).execute()
+
+
+def mark_submission_processed_state(service, message_id: str, processed_label_id: str, pending_label_id: str, was_pending: bool):
+    if was_pending:
+        mark_message_processed_and_clear_pending(service, message_id, processed_label_id, pending_label_id)
+    else:
+        mark_message_processed(service, message_id, processed_label_id)
+
+
 def extract_message_id_from_pr_body(body: str) -> str:
     if not body:
         return ""
@@ -617,33 +697,18 @@ def send_rejected_notifications(service, repo, base_branch: str):
         print(f"Sent rejected email for PR #{pr.number}")
 
 
-def process_message(service, repo, label_id: str, message):
-    message_id = message["id"]
-    full_message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
-    payload = full_message.get("payload", {})
-    headers = parse_headers(payload)
-    sender = headers.get("from", "unknown sender")
-    thread_id = full_message.get("threadId")
-    references = headers.get("message-id")
-
-    if not has_required_submission_consent(payload):
-        send_standard_reply(
-            service,
-            sender,
-            thread_id,
-            references,
-            SUBJECT_SUBMISSION_FAILED,
-            "submission failed",
-            "You have not properly consented.",
-            (
-                f"Your email body must contain exactly: '{REQUIRED_CONSENT_TEXT}'.\n"
-                f"Review the submission instructions: {SUBMISSION_INSTRUCTIONS_URL}"
-            ),
-        )
-        mark_message_processed(service, message_id, label_id)
-        print(f"Rejected message {message_id} due to missing/invalid consent text")
-        return
-
+def process_submission_to_pr(
+    service,
+    repo,
+    processed_label_id: str,
+    pending_label_id: str,
+    message_id: str,
+    payload: Dict,
+    sender: str,
+    thread_id: Optional[str],
+    references: Optional[str],
+    was_pending: bool,
+):
     attachments, invalid_files = download_attachments(service, message_id, payload)
     if invalid_files:
         invalid_list = "\n".join(f"- {filename}" for filename in invalid_files)
@@ -661,7 +726,7 @@ def process_message(service, repo, label_id: str, message):
                 f"Please send a NEW email (do not reply) with subject '{SUBJECT_SUBMISSION}' and corrected attachments."
             ),
         )
-        mark_message_processed(service, message_id, label_id)
+        mark_submission_processed_state(service, message_id, processed_label_id, pending_label_id, was_pending)
         print(f"Rejected message {message_id} due to invalid attachments")
         return
 
@@ -679,7 +744,7 @@ def process_message(service, repo, label_id: str, message):
                 f"Then send a NEW email (do not reply) with subject '{SUBJECT_SUBMISSION}'."
             ),
         )
-        mark_message_processed(service, message_id, label_id)
+        mark_submission_processed_state(service, message_id, processed_label_id, pending_label_id, was_pending)
         print(f"Processed message {message_id} with no valid attachments")
         return
 
@@ -700,20 +765,9 @@ def process_message(service, repo, label_id: str, message):
                 f"Please rename the files, then send a NEW email (do not reply) with subject '{SUBJECT_SUBMISSION}'."
             ),
         )
-        mark_message_processed(service, message_id, label_id)
+        mark_submission_processed_state(service, message_id, processed_label_id, pending_label_id, was_pending)
         print(f"Rejected message {message_id} due to duplicate filenames")
         return
-
-    send_standard_reply(
-        service,
-        sender,
-        thread_id,
-        references,
-        SUBJECT_RECEIVED,
-        "received",
-        "Your submission email has been received.",
-        "We are creating a pull request now.",
-    )
 
     branch_name = safe_branch_name(message_id)
     create_branch(repo, base_branch, branch_name)
@@ -729,26 +783,136 @@ def process_message(service, repo, label_id: str, message):
         "A pull request has been created for your submission.",
         f"PR URL: {pr_url}",
     )
-    mark_message_processed(service, message_id, label_id)
+    mark_submission_processed_state(service, message_id, processed_label_id, pending_label_id, was_pending)
     print(f"Created PR for message {message_id}: {pr_url}")
+
+
+def process_message(service, repo, processed_label_id: str, pending_label_id: str, message):
+    message_id = message["id"]
+    full_message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+    payload = full_message.get("payload", {})
+    headers = parse_headers(payload)
+    sender = headers.get("from", "unknown sender")
+    thread_id = full_message.get("threadId")
+    references = headers.get("message-id")
+
+    bypass_approved = has_hidden_codeword_bypass(payload)
+
+    if not bypass_approved and not has_required_submission_consent(payload):
+        send_standard_reply(
+            service,
+            sender,
+            thread_id,
+            references,
+            SUBJECT_SUBMISSION_FAILED,
+            "submission failed",
+            "You have not properly consented.",
+            (
+                f"Your email body must contain exactly: '{REQUIRED_CONSENT_TEXT}'.\n \n"
+                f"Review the submission instructions: {SUBMISSION_INSTRUCTIONS_URL}"
+            ),
+        )
+        mark_message_processed(service, message_id, processed_label_id)
+        print(f"Rejected message {message_id} due to missing/invalid consent text")
+        return
+
+    if bypass_approved:
+        send_standard_reply(
+            service,
+            sender,
+            thread_id,
+            references,
+            SUBJECT_RECEIVED,
+            "received",
+            "Your submission email has been received.",
+            "Bypass codeword accepted. We are creating a pull request now.",
+        )
+        process_submission_to_pr(
+            service,
+            repo,
+            processed_label_id,
+            pending_label_id,
+            message_id,
+            payload,
+            sender,
+            thread_id,
+            references,
+            False,
+        )
+        return
+
+    send_standard_reply(
+        service,
+        sender,
+        thread_id,
+        references,
+        SUBJECT_RECEIVED,
+        "received",
+        "Your submission email has been received and is pending manual approval.",
+        (
+            f"A pull request will only be created after a reply from {APPROVAL_EMAIL} in this thread "
+            "that says 'proceed'."
+        ),
+    )
+    mark_message_pending_approval(service, message_id, pending_label_id)
+    print(f"Queued message {message_id} for manual approval")
+
+
+def process_pending_message(service, repo, processed_label_id: str, pending_label_id: str, message):
+    message_id = message["id"]
+    full_message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+    payload = full_message.get("payload", {})
+    headers = parse_headers(payload)
+    sender = headers.get("from", "unknown sender")
+    thread_id = full_message.get("threadId")
+    references = headers.get("message-id")
+
+    if not has_proceed_approval_reply(service, thread_id):
+        print(f"Pending message {message_id}: waiting for proceed approval")
+        return
+
+    process_submission_to_pr(
+        service,
+        repo,
+        processed_label_id,
+        pending_label_id,
+        message_id,
+        payload,
+        sender,
+        thread_id,
+        references,
+        True,
+    )
 
 
 def main():
     gmail_service = get_gmail_service()
     repo = get_github_repo()
-    label_id = get_or_create_label(gmail_service, ATTACHMENT_LABEL)
+    processed_label_id = get_or_create_label(gmail_service, ATTACHMENT_LABEL)
+    pending_label_id = get_or_create_label(gmail_service, PENDING_APPROVAL_LABEL)
 
     try:
-        messages = list_submission_messages(gmail_service, ATTACHMENT_LABEL)
+        messages = list_submission_messages(gmail_service, ATTACHMENT_LABEL, PENDING_APPROVAL_LABEL)
         if messages:
             print(f"Found {len(messages)} submission message(s) to process")
             for message in messages:
                 try:
-                    process_message(gmail_service, repo, label_id, message)
+                    process_message(gmail_service, repo, processed_label_id, pending_label_id, message)
                 except HttpError as exc:
                     print(f"Gmail API error for message {message['id']}: {exc}")
         else:
             print("No new submission emails found")
+
+        pending_messages = list_pending_submission_messages(gmail_service, PENDING_APPROVAL_LABEL)
+        if pending_messages:
+            print(f"Found {len(pending_messages)} pending submission(s) awaiting approval")
+            for message in pending_messages:
+                try:
+                    process_pending_message(gmail_service, repo, processed_label_id, pending_label_id, message)
+                except HttpError as exc:
+                    print(f"Gmail API error for pending message {message['id']}: {exc}")
+        else:
+            print("No pending submissions awaiting approval")
 
         send_accepted_notifications(gmail_service, repo, repo.default_branch)
         send_rejected_notifications(gmail_service, repo, repo.default_branch)

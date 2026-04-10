@@ -63,4 +63,4 @@ The bot will reject the submission if any of the following occur:
 - no valid attachments are included
 - any attached filename already exists in the repository (case-insensitive)
 
-If your submission is rejected, send a **new email** (do not reply to the existing thread) with the same subject and updated attachments as per the instructions in your closed PR. Thanks.
+If your submission is rejected, send a **new email** (do not reply to the existing thread) with the same subject and updated attachments as per the instructions in your closed PR. You will receive notice of this if it happens. Thanks.
