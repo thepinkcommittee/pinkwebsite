@@ -1091,7 +1091,7 @@ def process_submission_to_pr(
         thread_id,
         references,
         SUBJECT_PR_REQUEST_MADE,
-        "pr request made",
+        "PR request made",
         f"A pull request has been created for your {request_label}.",
         f"PR URL: {pr_url}",
     )
