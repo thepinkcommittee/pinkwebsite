@@ -14,6 +14,7 @@ Opening paragraph here.
 
 ===
 
+This above (===) is a dotted line divider.
 More text after a divider.
 
 !photo_one.jpg
