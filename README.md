@@ -3,7 +3,7 @@ Submissions should follow the format of the following example:
     
 ```text
 title: My Hack Title
-date: 2025-09-01
+date: 2025-09-23
 location: some building
 status: temporary installation
 perpetrators: anonymous
