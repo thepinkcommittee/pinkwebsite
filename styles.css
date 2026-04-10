@@ -30,7 +30,7 @@ a:hover{text-decoration:underline}
 .preview.show{display:block;font-size:inherit}
 .grayscale{filter:grayscale(100%)}
 .when{color:var(--muted);margin-right:0;white-space:nowrap;font-variant-numeric:tabular-nums}
-.where{color:var(--muted);white-space:nowrap}
+.where{color:var(--muted);display:inline-block;max-inline-size:16ch;white-space:normal;overflow-wrap:normal;word-break:normal;text-align:left}
 .hacklist .title{min-width:0;overflow-wrap:anywhere}
 #news .hack-item > div{display:grid;grid-template-columns:19ch minmax(0,1fr) max-content;align-items:baseline;column-gap:6px;width:100%}
 
