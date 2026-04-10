@@ -7,7 +7,7 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from github import Github
+from github import Github, Auth
 from github.GithubException import UnknownObjectException
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -49,7 +49,7 @@ def get_gmail_service():
 def get_github_repo():
     token = get_env("GITHUB_TOKEN")
     repository = get_env("GITHUB_REPOSITORY")
-    gh = Github(token)
+    gh = Github(auth=Auth.Token(token))
     return gh.get_repo(repository)
 
 
