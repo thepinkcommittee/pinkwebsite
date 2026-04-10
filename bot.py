@@ -1,11 +1,13 @@
 import base64
 import os
 import re
+import subprocess
 import time
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Dict, List, Optional
 
-from github import Github, InputGitTreeElement
+from github import Github
 from github.GithubException import UnknownObjectException
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -155,6 +157,18 @@ def unique_target_path(repo, base_branch: str, original_path: str) -> str:
             return candidate
 
 
+def write_branch_file(repo, branch_name: str, file_path: str, content, message: str):
+    try:
+        existing = repo.get_contents(file_path, ref=branch_name)
+        repo.update_file(file_path, message, content, existing.sha, branch=branch_name)
+    except UnknownObjectException:
+        repo.create_file(file_path, message, content, branch=branch_name)
+
+
+def run_build_script():
+    subprocess.run(["python", "build.py"], check=True)
+
+
 def create_branch(repo, base_branch: str, branch_name: str):
     source_sha = repo.get_branch(base_branch).commit.sha
     ref = f"refs/heads/{branch_name}"
@@ -167,19 +181,34 @@ def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachme
         filename = attachment["filename"]
         extension = os.path.splitext(filename)[1].lower()
         if extension in ALLOWED_HACK_EXTENSIONS:
-            target_path = os.path.join("hacks", filename)
+            target_path = os.path.join("entries", filename)
         else:
             target_path = os.path.join("assets", filename)
         target_path = unique_target_path(repo, base_branch, target_path)
         unique_paths.append((target_path.replace("\\", "/"), attachment["content"]))
 
+    # Save attachments locally before building
     for path, content in unique_paths:
-        repo.create_file(
-            path,
-            f"Add submission file {os.path.basename(path)}",
-            content,
-            branch=branch_name,
-        )
+        local_path = Path(path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(local_path, "wb") as f:
+            f.write(content)
+
+    # Build the site locally so generated files are created before commit
+    run_build_script()
+
+    # Upload attachment and generated site files to the new branch
+    for path, content in unique_paths:
+        write_branch_file(repo, branch_name, path, content, f"Add submission file {os.path.basename(path)}")
+
+    generated_files = ["index.html"]
+    generated_files += [str(p) for p in sorted(Path("hacks").glob("*.html"))]
+    generated_files += [str(p) for p in sorted(Path("browse").glob("*.html"))]
+
+    for gen_path in generated_files:
+        with open(gen_path, "rb") as f:
+            content = f.read()
+        write_branch_file(repo, branch_name, gen_path.replace("\\", "/"), content, f"Update generated site file {gen_path}")
 
     pr_title = f"New submission from {sender or 'unknown sender'}"
     pr_body = (

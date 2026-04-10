@@ -33,12 +33,14 @@ Attach one or more files:
 
 The bot will:
 - reply with `pinkwebsite: received`
-- create a pull request with `.hack` files in `hacks/` and images in `assets/`
+- put `.hack` files into `entries/` and images into `assets/`
+- run `build.py` to generate `hacks/` pages and update `index.html`
+- commit those changes in a pull request
 - reply again with `pinkwebsite: pr request made`
 - if the PR is closed without merging, it will send `pinkwebsite: rejected`
 - if the PR is merged, it will send `pinkwebsite: accepted`
 
-If your submission is rejected, send a new email with the same subject and updated attachments.
+If your submission is rejected, send a new email with the same subject and updated attachments as per the instructions in your closed PR. Thanks.
 
 ## build
 Generate pages and update the homepage list:
