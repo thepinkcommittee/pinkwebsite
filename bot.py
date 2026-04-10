@@ -25,6 +25,65 @@ ALLOWED_EXTENSIONS = ALLOWED_HACK_EXTENSIONS.union(ALLOWED_IMAGE_EXTENSIONS)
 ALLOWED_EXTENSIONS_DISPLAY = ", ".join(sorted(ALLOWED_EXTENSIONS))
 ACCEPTED_COMMENT_MARKER = "BOT: accepted notification sent"
 REJECTED_COMMENT_MARKER = "BOT: rejected notification sent"
+SUBJECT_RECEIVED = "pinkwebsite: received"
+SUBJECT_SUBMISSION_FAILED = "pinkwebsite: submission failed"
+SUBJECT_PR_REQUEST_MADE = "pinkwebsite: pr request made"
+SUBJECT_ACCEPTED = "pinkwebsite: accepted"
+SUBJECT_REJECTED = "pinkwebsite: rejected"
+SUBJECT_SUBMISSION = "pinkwebsite: submission"
+
+
+def normalize_hack_front_matter(file_path: str):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    lines = content.splitlines()
+    front_matter = []
+    body_start = 0
+    in_front = True
+    for i, line in enumerate(lines):
+        if line.strip() == '---':
+            if in_front:
+                body_start = i + 1
+                break
+            else:
+                in_front = True
+        elif in_front:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip().lower()
+                if key == 'id':
+                    continue
+                if key == 'title':
+                    value = value.strip()
+                elif key == 'location':
+                    value = value.strip().title()
+                else:
+                    value = value.strip().lower()
+                front_matter.append(f'{key}: {value}')
+            else:
+                front_matter.append(line)
+        else:
+            break
+    
+    if body_start > 0:
+        new_content = '\n'.join(front_matter) + '\n---\n' + '\n'.join(lines[body_start:])
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+
+
+def build_standard_email_body(status: str, message: str, details: Optional[str] = None) -> str:
+    lines = [
+        "Hello,",
+        "",
+        f"status: {status}",
+        "",
+        message.strip(),
+    ]
+    if details:
+        lines.extend(["", details.strip()])
+    lines.extend(["", "Regards,", "PinkWebsite Submission Bot"])
+    return "\n".join(lines)
 
 
 def get_env(name: str, required: bool = True) -> str:
@@ -70,7 +129,7 @@ def get_or_create_label(service, label_name: str) -> str:
 
 
 def list_submission_messages(service, label_name: str) -> List[Dict]:
-    query = f'subject:"pinkwebsite: submission" -label:{label_name}'
+    query = f'subject:"{SUBJECT_SUBMISSION}" -label:{label_name}'
     response = service.users().messages().list(userId="me", q=query).execute()
     return response.get("messages", [])
 
@@ -93,6 +152,49 @@ def collect_parts(payload: Dict) -> List[Dict]:
 def is_valid_attachment(filename: str) -> bool:
     extension = os.path.splitext(filename)[1].lower()
     return extension in ALLOWED_EXTENSIONS
+
+
+def attachment_target_dir(filename: str) -> str:
+    extension = os.path.splitext(filename)[1].lower()
+    return "entries" if extension in ALLOWED_HACK_EXTENSIONS else "assets"
+
+
+def find_case_insensitive_duplicate_filenames(repo, base_branch: str, attachments: List[Dict]) -> List[str]:
+    existing_names_by_dir: Dict[str, set] = {"entries": set(), "assets": set()}
+
+    for directory in ("entries", "assets"):
+        try:
+            directory_contents = repo.get_contents(directory, ref=base_branch)
+        except UnknownObjectException:
+            directory_contents = []
+
+        if not isinstance(directory_contents, list):
+            directory_contents = [directory_contents]
+
+        existing_names_by_dir[directory] = {
+            item.name.casefold()
+            for item in directory_contents
+            if getattr(item, "type", "") == "file"
+        }
+
+    seen_submission_names: Dict[str, set] = {"entries": set(), "assets": set()}
+    duplicates = set()
+
+    for attachment in attachments:
+        raw_filename = attachment.get("filename", "")
+        filename = os.path.basename(raw_filename).strip()
+        if not filename:
+            continue
+
+        directory = attachment_target_dir(filename)
+        normalized = filename.casefold()
+
+        if normalized in seen_submission_names[directory] or normalized in existing_names_by_dir[directory]:
+            duplicates.add(filename)
+
+        seen_submission_names[directory].add(normalized)
+
+    return sorted(duplicates, key=str.casefold)
 
 
 def download_attachments(service, message_id: str, payload: Dict) -> tuple[List[Dict], List[str]]:
@@ -165,8 +267,13 @@ def write_branch_file(repo, branch_name: str, file_path: str, content, message: 
         repo.create_file(file_path, message, content, branch=branch_name)
 
 
-def run_build_script():
-    subprocess.run(["python", "build.py"], check=True)
+def run_build_script(news_timestamp: str = "", new_entry_stems: Optional[List[str]] = None):
+    env = os.environ.copy()
+    if news_timestamp:
+        env["PINK_NEWS_TIMESTAMP"] = news_timestamp
+    if new_entry_stems:
+        env["PINK_NEW_ENTRY_STEMS"] = ",".join(new_entry_stems)
+    subprocess.run(["python", "build.py"], check=True, env=env)
 
 
 def create_branch(repo, base_branch: str, branch_name: str):
@@ -194,8 +301,21 @@ def create_pr_for_attachments(repo, branch_name: str, base_branch: str, attachme
         with open(local_path, "wb") as f:
             f.write(content)
 
+    # Normalize front matter in .hack files
+    for path, _ in unique_paths:
+        if os.path.splitext(path)[1].lower() == '.hack':
+            normalize_hack_front_matter(path)
+
     # Build the site locally so generated files are created before commit
-    run_build_script()
+    new_entry_stems = sorted(
+        {
+            Path(path).stem
+            for path, _ in unique_paths
+            if os.path.splitext(path)[1].lower() in ALLOWED_HACK_EXTENSIONS
+        }
+    )
+    pr_requested_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    run_build_script(pr_requested_at, new_entry_stems)
 
     # Upload attachment and generated site files to the new branch
     for path, content in unique_paths:
@@ -245,6 +365,20 @@ def make_reply(subject: str, body_text: str, to_address: str, thread_id: Optiona
 
 def send_message(service, message_body: Dict) -> Dict:
     return service.users().messages().send(userId="me", body=message_body).execute()
+
+
+def send_standard_reply(
+    service,
+    to_address: str,
+    thread_id: Optional[str],
+    references: Optional[str],
+    subject: str,
+    status: str,
+    message: str,
+    details: Optional[str] = None,
+) -> Dict:
+    body = build_standard_email_body(status, message, details)
+    return send_message(service, make_reply(subject, body, to_address, thread_id, references))
 
 
 def mark_message_processed(service, message_id: str, label_id: str):
@@ -308,12 +442,16 @@ def send_accepted_notifications(service, repo, base_branch: str):
             print(f"Skipping merged PR #{pr.number}: sender email not found")
             continue
 
-        subject = "pinkwebsite: accepted"
-        body_text = (
-            "Hello,\n\nYour submission has been accepted and merged. "
-            "The website will update shortly.\n\nThank you."
+        send_standard_reply(
+            service,
+            recipient,
+            None,
+            None,
+            SUBJECT_ACCEPTED,
+            "accepted",
+            "Your submission has been accepted and merged.",
+            "The website will update shortly.",
         )
-        send_message(service, make_reply(subject, body_text, recipient, None, None))
         pr.create_issue_comment(ACCEPTED_COMMENT_MARKER)
         print(f"Sent accepted email for PR #{pr.number}")
 
@@ -337,15 +475,20 @@ def send_rejected_notifications(service, repo, base_branch: str):
             print(f"Skipping rejected PR #{pr.number}: sender email not found")
             continue
 
-        subject = "pinkwebsite: rejected"
-        body_text = (
-            "email: rejected\n\n"
-            "Your submission PR was closed without merging. "
-            f"Please review the PR here: {pr.html_url}\n\n"
-            "If you'd like to update the submission, send a new email with the same subject "
-            "and include the updated attachments."
+        send_standard_reply(
+            service,
+            recipient,
+            None,
+            None,
+            SUBJECT_REJECTED,
+            "rejected",
+            "Your submission PR was closed without merging.",
+            (
+                f"Review the PR here: {pr.html_url}\n"
+                f"To resubmit, send a NEW email (do not reply to this thread) with subject '{SUBJECT_SUBMISSION}' "
+                "and include the updated attachments."
+            ),
         )
-        send_message(service, make_reply(subject, body_text, recipient, None, None))
         pr.create_issue_comment(REJECTED_COMMENT_MARKER)
         print(f"Sent rejected email for PR #{pr.number}")
 
@@ -356,59 +499,93 @@ def process_message(service, repo, label_id: str, message):
     payload = full_message.get("payload", {})
     headers = parse_headers(payload)
     sender = headers.get("from", "unknown sender")
-    subject = headers.get("subject", "pinkwebsite: submission")
     thread_id = full_message.get("threadId")
+    references = headers.get("message-id")
 
     attachments, invalid_files = download_attachments(service, message_id, payload)
     if invalid_files:
         invalid_list = "\n".join(f"- {filename}" for filename in invalid_files)
-        body_text = (
-            "email: the following submissions did not meet the submission requirements because invalid file types were included:\n"
-            f"{invalid_list}\n\n"
-            f"Allowed files: {ALLOWED_EXTENSIONS_DISPLAY}"
+        send_standard_reply(
+            service,
+            sender,
+            thread_id,
+            references,
+            SUBJECT_SUBMISSION_FAILED,
+            "submission failed",
+            "Your submission included invalid file types.",
+            (
+                f"Invalid files:\n{invalid_list}\n"
+                f"Allowed files: {ALLOWED_EXTENSIONS_DISPLAY}\n"
+                f"Please send a NEW email (do not reply) with subject '{SUBJECT_SUBMISSION}' and corrected attachments."
+            ),
         )
-        reply = make_reply("pinkwebsite: submission failed", body_text, sender, thread_id, headers.get("message-id"))
-        send_message(service, reply)
         mark_message_processed(service, message_id, label_id)
         print(f"Rejected message {message_id} due to invalid attachments")
         return
 
     if not attachments:
-        body_text = (
-            "We received your submission email but did not find any valid attachments. "
-            "Please attach one or more .hack files and image files (.png, .jpg, .jpeg, .gif, .webp, .svg)."
+        send_standard_reply(
+            service,
+            sender,
+            thread_id,
+            references,
+            SUBJECT_SUBMISSION_FAILED,
+            "submission failed",
+            "We did not find any valid attachments in your submission email.",
+            (
+                "Please attach one or more .hack files and image files (.png, .jpg, .jpeg, .gif, .webp, .svg).\n"
+                f"Then send a NEW email (do not reply) with subject '{SUBJECT_SUBMISSION}'."
+            ),
         )
-        reply = make_reply("pinkwebsite: received", body_text, sender, thread_id, headers.get("message-id"))
-        send_message(service, reply)
         mark_message_processed(service, message_id, label_id)
         print(f"Processed message {message_id} with no valid attachments")
         return
 
-    send_message(
-        service,
-        make_reply(
-            "pinkwebsite: received",
-            "Your submission email has been received. We are creating a pull request now.",
+    base_branch = repo.default_branch
+    duplicate_filenames = find_case_insensitive_duplicate_filenames(repo, base_branch, attachments)
+    if duplicate_filenames:
+        duplicate_list = "\n".join(f"- {filename}" for filename in duplicate_filenames)
+        send_standard_reply(
+            service,
             sender,
             thread_id,
-            headers.get("message-id"),
-        ),
+            references,
+            SUBJECT_SUBMISSION_FAILED,
+            "submission failed",
+            "Some attached filenames already exist (case-insensitive match).",
+            (
+                f"Conflicting files:\n{duplicate_list}\n"
+                f"Please rename the files, then send a NEW email (do not reply) with subject '{SUBJECT_SUBMISSION}'."
+            ),
+        )
+        mark_message_processed(service, message_id, label_id)
+        print(f"Rejected message {message_id} due to duplicate filenames")
+        return
+
+    send_standard_reply(
+        service,
+        sender,
+        thread_id,
+        references,
+        SUBJECT_RECEIVED,
+        "received",
+        "Your submission email has been received.",
+        "We are creating a pull request now.",
     )
 
-    base_branch = repo.default_branch
     branch_name = safe_branch_name(message_id)
     create_branch(repo, base_branch, branch_name)
     pr_url = create_pr_for_attachments(repo, branch_name, base_branch, attachments, message_id)
 
-    send_message(
+    send_standard_reply(
         service,
-        make_reply(
-            "pinkwebsite: pr request made",
-            f"A pull request has been created: {pr_url}",
-            sender,
-            thread_id,
-            headers.get("message-id"),
-        ),
+        sender,
+        thread_id,
+        references,
+        SUBJECT_PR_REQUEST_MADE,
+        "pr request made",
+        "A pull request has been created for your submission.",
+        f"PR URL: {pr_url}",
     )
     mark_message_processed(service, message_id, label_id)
     print(f"Created PR for message {message_id}: {pr_url}")

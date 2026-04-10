@@ -1,24 +1,47 @@
 ## content format: .hack
-Each entry lives in `entries/<id>.hack` and its assets in `assets/<id>/`.
+Each entry lives in `entries/<name>.hack`.
 
-Front-matter (key: value), then a line with x then freeform body text:
+A `.hack` file has two parts:
+1. Front-matter lines as `key: value`
+2. A separator line `---`
+3. Freeform body text
 
+Example:
+    
 ```text
-id: my-hack-2025
 title: My Hack Title
 date: 2025-09-01
-location: Some building
+location: some building
 status: temporary installation
 perpetrators: anonymous
 contributors: club foo
-preview: hero.jpg
-assets: photo1.jpg, photo2.jpg, video1.mp4
+topic: engineering, campus-life
 ---
-Paragraphs of story text here.
+Opening paragraph here.
+
+===
+
+More text after a divider.
+
+!photo_one.jpg
 ```
 
-- **preview**: shown on the homepage as a grayscale, dithered thumbnail
-- **assets**: comma-separated file names inside `assets/<id>/`; images will be shown on the entry page
+### front-matter behavior
+- Keys are case-insensitive.
+- Blank lines are ignored.
+- Lines starting with `#` are treated as comments and ignored.
+- Do not include `id` in front matter.
+- IDs are backend-internal only and are generated from each `.hack` filename stem.
+- Commonly used keys in generated pages are:
+	`title`, `date`, `location`, `status`, `perpetrators`, `contributors`, `topic`.
+
+### body formatting supported
+- Paragraphs: separate paragraphs with a blank line.
+- Divider: a line that is exactly `===` becomes a horizontal rule.
+- Inline images: `!filename.ext` inserts an image from `assets/filename.ext`.
+	Allowed token characters are letters, numbers, `_`, `-`, `.`, and `@`.
+- The first inline image token is used as the homepage preview thumbnail.
+- Regular text is HTML-escaped before rendering.
 
 ## how to submit a new entry
 Send an email to `thepinkcommittee@gmail.com` with the subject:
@@ -49,4 +72,4 @@ Generate pages and update the homepage list:
 python build.py
 ```
 
-Outputs per-entry pages into `hacks/<id>.html` and injects previews between the `<!-- BUILD:RECENT:START/END -->` markers in `index.html`. 
+Outputs per-entry pages into `hacks/<generated-id>.html` (generated from each `.hack` filename) and injects previews between the `<!-- BUILD:RECENT:START/END -->` markers in `index.html`.

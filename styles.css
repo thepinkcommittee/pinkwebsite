@@ -12,8 +12,8 @@ a:hover{text-decoration:underline}
 
 .head{display:block;width:100%;margin:0;padding:8px;border-bottom:1px solid #222}
 .head h1{margin:0 0 1px 0;font-size:16px}
-.tag{margin:0;color:var(--muted)}
-.nav{margin-top:4px}
+.tag{margin:0;color:var(--muted);text-align:justify;text-align-last:justify}
+.nav{margin-top:4px;text-align:justify;text-align-last:justify}
 .nav .sep{color:#444;margin:0 4px}
 
 .backbar{display:block;width:100%;margin:0;padding:8px;border-bottom:1px solid #222;color:#bdbdbd}
@@ -22,14 +22,17 @@ a:hover{text-decoration:underline}
 .container{padding:6px 8px}
 .hacklist{list-style:none;padding-left:0;margin:4px 0}
 .hack-item{margin:2px 0;display:flex;align-items:flex-start;gap:4px}
+.hack-item > div{flex:1;min-width:0}
 .hack-item::before{content:"- ";color:var(--fg)}
 .toggle{cursor:pointer;color:var(--muted);user-select:none;margin-right:3px}
-.hack{display:inline-block}
+.hack{display:grid;grid-template-columns:19ch minmax(0,1fr) max-content;align-items:baseline;column-gap:6px;width:100%}
 .preview, .preview.show{width:100%;max-width:400px;object-fit:cover;display:none;margin:2px 0 4px 0;font-size:inherit}
 .preview.show{display:block;font-size:inherit}
 .grayscale{filter:grayscale(100%)}
-.when{color:var(--muted);margin-right:6px}
-.where{color:var(--muted);margin-left:4px}
+.when{color:var(--muted);margin-right:0;white-space:nowrap;font-variant-numeric:tabular-nums}
+.where{color:var(--muted);white-space:nowrap}
+.hacklist .title{min-width:0;overflow-wrap:anywhere}
+#news .hack-item > div{display:grid;grid-template-columns:19ch minmax(0,1fr) max-content;align-items:baseline;column-gap:6px;width:100%}
 
 .years{list-style:"# ";padding-left:18px;margin:4px 0}
 .yeartag{display:inline-block;padding:0 3px;margin-right:4px;border:1px solid #333;color:#cfcfcf}

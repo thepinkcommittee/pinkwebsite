@@ -1,4 +1,3 @@
-id: r2d2-1999
 title: R2‑D2 on the Great Dome
 date: 1999-05-04
 location: Killian Court
