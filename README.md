@@ -1,9 +1,3 @@
-## warning!
-> [!WARNING]
-> **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION IN YOUR EMAIL.**
-> This includes information in your `.hack` file, image files, and even file names.
-> Submitted content may be made public when a pull request is created, and this cannot be fully reverted.
-
 ## content format: .hack
 Submissions should follow the format of the following example:
     
@@ -31,7 +25,7 @@ If you need more clarification refer to previous [submissions](https://github.co
 > [!WARNING]
 > **DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION IN YOUR EMAIL.**
 > This includes information in your `.hack` file, image files, and even file names.
-> Submitted content may be made public when a pull request is created, and this cannot be fully reverted.
+> Submitted content WILL BE MADE PUBLIC as pull request is created as part of this submission process. THIS CANNOT BE REVERTED.
 
 Send an email to [thepinkcommittee@gmail.com](mailto:thepinkcommittee@gmail.com) with the subject:
 
