@@ -39,6 +39,12 @@ Send an email to [thepinkcommittee@gmail.com](mailto:thepinkcommittee@gmail.com)
 pinkwebsite: submission
 ```
 
+The email body must contain the following consent statement:
+
+```text
+i confirm that there is no personally identifiable information in the included files and that i have sent the correct files for submission. i understand that once i submit, unless there are invalid files resulting in submission rejection, my submission will be made public in the pinkwebsite github.
+```
+
 Attach one or more files:
 - `.hack` files for the entry content
 - image files such as `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, or `.svg`
@@ -48,8 +54,15 @@ The bot will:
 - put `.hack` files into `entries/` and images into `assets/`
 - run `build.py` to generate `hacks/` pages and update `index.html`
 - commit those changes in a pull request
+- include a list of submitted `.hack` and image files in the PR body, with clickable links to each file
 - reply again with `pinkwebsite: pr request made`
 - if the PR is closed without merging, it will send `pinkwebsite: rejected`
 - if the PR is merged, it will send `pinkwebsite: accepted`
 
-If your submission is rejected, send a new email with the same subject and updated attachments as per the instructions in your closed PR. Thanks.
+The bot will reject the submission if any of the following occur:
+- the consent statement in the email body is missing or does not match
+- invalid attachment file types are included
+- no valid attachments are included
+- any attached filename already exists in the repository (case-insensitive)
+
+If your submission is rejected, send a **new email** (do not reply to the existing thread) with the same subject and updated attachments as per the instructions in your closed PR. Thanks.

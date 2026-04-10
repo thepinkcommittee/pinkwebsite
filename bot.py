@@ -34,6 +34,8 @@ SUBJECT_REJECTED = "pinkwebsite: rejected"
 SUBJECT_SUBMISSION = "pinkwebsite: submission"
 SUBJECT_BOT_ERROR = "pinkwebsite: bot error"
 BOT_ALERT_EMAIL = "thepinkcommittee@gmail.com"
+SUBMISSION_INSTRUCTIONS_URL = "https://github.com/thepinkcommittee/pinkwebsite?tab=readme-ov-file#how-to-submit-a-new-entry"
+REQUIRED_CONSENT_TEXT = "i confirm that there is no personally identifiable information in the included files and that i have sent the correct files for submission. i understand that once i submit, unless there are invalid files resulting in submission rejection, my submission will be made public in the pinkwebsite github."
 
 
 def normalize_hack_front_matter(file_path: str):
@@ -142,6 +144,17 @@ def parse_headers(payload: Dict) -> Dict[str, str]:
     return {header["name"].lower(): header["value"] for header in headers}
 
 
+def decode_gmail_body_data(raw_data: str) -> str:
+    if not raw_data:
+        return ""
+    try:
+        padding = "=" * (-len(raw_data) % 4)
+        decoded = base64.urlsafe_b64decode((raw_data + padding).encode("utf-8"))
+        return decoded.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
 def collect_parts(payload: Dict) -> List[Dict]:
     parts = []
     if payload.get("parts"):
@@ -150,6 +163,35 @@ def collect_parts(payload: Dict) -> List[Dict]:
     else:
         parts.append(payload)
     return parts
+
+
+def extract_plain_text_body(payload: Dict) -> str:
+    text_chunks = []
+    for part in collect_parts(payload):
+        if part.get("filename"):
+            continue
+        mime_type = (part.get("mimeType") or "").lower()
+        if mime_type != "text/plain":
+            continue
+        raw_data = part.get("body", {}).get("data")
+        text = decode_gmail_body_data(raw_data)
+        if text.strip():
+            text_chunks.append(text.strip())
+
+    if text_chunks:
+        return "\n".join(text_chunks).strip()
+
+    fallback_data = payload.get("body", {}).get("data")
+    return decode_gmail_body_data(fallback_data).strip()
+
+
+def normalize_text_for_comparison(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def has_required_submission_consent(payload: Dict) -> bool:
+    body_text = extract_plain_text_body(payload)
+    return normalize_text_for_comparison(body_text) == normalize_text_for_comparison(REQUIRED_CONSENT_TEXT)
 
 
 def is_valid_attachment(filename: str) -> bool:
@@ -583,6 +625,24 @@ def process_message(service, repo, label_id: str, message):
     sender = headers.get("from", "unknown sender")
     thread_id = full_message.get("threadId")
     references = headers.get("message-id")
+
+    if not has_required_submission_consent(payload):
+        send_standard_reply(
+            service,
+            sender,
+            thread_id,
+            references,
+            SUBJECT_SUBMISSION_FAILED,
+            "submission failed",
+            "You have not properly consented.",
+            (
+                f"Your email body must contain exactly: '{REQUIRED_CONSENT_TEXT}'.\n"
+                f"Review the submission instructions: {SUBMISSION_INSTRUCTIONS_URL}"
+            ),
+        )
+        mark_message_processed(service, message_id, label_id)
+        print(f"Rejected message {message_id} due to missing/invalid consent text")
+        return
 
     attachments, invalid_files = download_attachments(service, message_id, payload)
     if invalid_files:
