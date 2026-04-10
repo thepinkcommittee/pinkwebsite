@@ -42,7 +42,10 @@ pinkwebsite: submission
 The email body must contain the following consent statement:
 
 ```text
-i confirm that there is no personally identifiable information in the included files and that i have sent the correct files for submission. i understand that once i submit, unless there are invalid files resulting in submission rejection, my submission will be made public in the pinkwebsite github.
+i confirm that there is no personally identifiable information in the included files
+and that i have sent the correct files for submission. i understand that once i submit,
+unless there are invalid files resulting in submission rejection, my submission will be
+made public in the pinkwebsite github.
 ```
 
 Attach one or more files:
