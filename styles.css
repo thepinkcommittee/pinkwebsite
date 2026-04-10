@@ -26,7 +26,7 @@ a:hover{text-decoration:underline}
 .hack-item::before{content:"- ";color:var(--fg)}
 .toggle{cursor:pointer;color:var(--muted);user-select:none;margin-right:3px}
 .hack{display:grid;grid-template-columns:var(--hack-date-col-width) minmax(0,1fr) minmax(0,var(--where-col,var(--hack-where-col-width)));align-items:baseline;column-gap:6px;width:100%}
-.preview, .preview.show{width:100%;max-width:400px;object-fit:cover;display:none;margin:2px 0 4px 0;font-size:inherit}
+.preview, .preview.show{width:100%;max-width:none;height:300px;object-fit:cover;object-position:center;display:none;margin:2px 0 4px 0;font-size:inherit}
 .preview.show{display:block;font-size:inherit}
 .grayscale{filter:grayscale(100%)}
 .when{color:var(--muted);margin-right:0;white-space:nowrap;font-variant-numeric:tabular-nums}

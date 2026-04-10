@@ -19,11 +19,6 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$")
 FALLBACK_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s+06:09:\d{2}$")
-HACK_CONTENT_BUDGET_CH = 50
-NEWS_CONTENT_BUDGET_CH = 42
-MIN_TITLE_COL_CH = 8
-MIN_WHERE_COL_CH = 8
-MAX_WHERE_COL_CH = 28
 NEWS_SECTION_LIST_RE = re.compile(r'(<section id="news">[\s\S]*?<ul class="hacklist">)([\s\S]*?)(</ul>)', re.S)
 NEWS_ITEM_RE = re.compile(
 	r'<li class="hack-item"(?P<attrs>[^>]*)>\s*<div(?:\s+[^>]*)?>\s*<span class="when">(?P<when>.*?)</span>\s*<span class="title">(?P<title>.*?)</span>\s*<span class="where">\((?P<where>.*?)\)</span>\s*</div>\s*</li>',
@@ -129,94 +124,6 @@ def parse_existing_news_items(news_content, entries_by_title):
 			}
 		)
 	return items
-
-
-def estimate_anywhere_lines(text, width):
-	text = (text or '').strip()
-	if not text:
-		return 1
-	width = max(1, int(width))
-	return max(1, (len(text) + width - 1) // width)
-
-
-def estimate_word_wrap_lines(text, width):
-	text = (text or '').strip()
-	if not text:
-		return 1
-	width = max(1, int(width))
-	words = text.split()
-	if not words:
-		return 1
-
-	lines = 1
-	current = 0
-	for word in words:
-		word_len = len(word)
-		if word_len > width:
-			if current > 0:
-				lines += 1
-				current = 0
-			chunks = (word_len + width - 1) // width
-			lines += max(0, chunks - 1)
-			current = word_len % width
-			if current == 0:
-				current = width
-			continue
-
-		if current == 0:
-			current = word_len
-			continue
-
-		if current + 1 + word_len <= width:
-			current += 1 + word_len
-		else:
-			lines += 1
-			current = word_len
-
-	return lines
-
-
-def optimal_row_columns(title_text, where_text, content_budget_ch):
-	title_text = (title_text or '').strip()
-	where_text = (where_text or '').strip()
-	longest_where_word = max((len(word) for word in where_text.split()), default=MIN_WHERE_COL_CH)
-
-	max_where = min(MAX_WHERE_COL_CH, content_budget_ch - MIN_TITLE_COL_CH)
-	min_where = max(MIN_WHERE_COL_CH, min(longest_where_word, max_where))
-	if max_where < min_where:
-		min_where = max(1, content_budget_ch - MIN_TITLE_COL_CH)
-		max_where = min_where
-
-	best_title = max(MIN_TITLE_COL_CH, content_budget_ch - min_where)
-	best_where = min_where
-	best_key = None
-
-	for where_ch in range(min_where, max_where + 1):
-		title_ch = content_budget_ch - where_ch
-		if title_ch < MIN_TITLE_COL_CH:
-			continue
-
-		title_lines = estimate_anywhere_lines(title_text, title_ch)
-		where_lines = estimate_word_wrap_lines(where_text, where_ch)
-		key = (
-			max(title_lines, where_lines),
-			title_lines + where_lines,
-			abs(title_lines - where_lines),
-			-title_ch,
-		)
-
-		if best_key is None or key < best_key:
-			best_key = key
-			best_title = title_ch
-			best_where = where_ch
-
-	return best_title, best_where
-
-
-def row_width_style_attr(title_text, where_text, is_news=False):
-	content_budget_ch = NEWS_CONTENT_BUDGET_CH if is_news else HACK_CONTENT_BUDGET_CH
-	title_ch, where_ch = optimal_row_columns(title_text, where_text, content_budget_ch)
-	return f' style="--title-col:{title_ch}ch;--where-col:{where_ch}ch"'
 
 
 def parse_hack(text):
@@ -328,7 +235,6 @@ def render_index_item(meta, is_browse=False):
 	raw_loc = (meta.get('location', '') or '').strip()
 	loc = html.escape(raw_loc)
 	preview = meta.get('preview', '').strip()
-	row_style = row_width_style_attr(raw_title, f"({raw_loc})")
 	
 	# Fix paths for browse pages vs index
 	if is_browse:
@@ -344,7 +250,7 @@ def render_index_item(meta, is_browse=False):
 	return f'''\t<li class="hack-item">
 \t\t{toggle_html}
 \t\t<div>
-			<a class="hack" href="{entry_link}"{row_style}>
+			<a class="hack" href="{entry_link}">
 \t\t\t\t<span class="when">{date}</span>
 \t\t\t\t<span class="title">{title}</span>
 				<span class="where">({loc})</span>
@@ -359,13 +265,11 @@ def render_news_item(item):
 	raw_title = (item.get('title', '') or '').strip()
 	title = html.escape(raw_title)
 	title_prefix = 'added: ' if item.get('is_added', True) else ''
-	display_title = f"{title_prefix}{raw_title}"
 	date = html.escape(timestamp)
 	raw_loc = (item.get('location', '') or '').strip()
 	loc = html.escape(raw_loc)
-	row_style = row_width_style_attr(display_title, f"({raw_loc})", is_news=True)
 	return f'''\t\t\t\t<li class="hack-item">
-					<div{row_style}>
+					<div>
 						<span class="when">{date}</span>
 						<span class="title">{title_prefix}{title}</span>
 						<span class="where">({loc})</span>
