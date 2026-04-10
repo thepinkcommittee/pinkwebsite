@@ -23,8 +23,8 @@ ALLOWED_HACK_EXTENSIONS = {".hack"}
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 ALLOWED_EXTENSIONS = ALLOWED_HACK_EXTENSIONS.union(ALLOWED_IMAGE_EXTENSIONS)
 ALLOWED_EXTENSIONS_DISPLAY = ", ".join(sorted(ALLOWED_EXTENSIONS))
-ACCEPTED_COMMENT_MARKER = "BOT: accepted notification sent"
 REJECTED_COMMENT_MARKER = "BOT: rejected notification sent"
+ACCEPTED_BODY_MARKER = "<!-- pink-bot-accepted-notified -->"
 SUBJECT_RECEIVED = "pinkwebsite: received"
 SUBJECT_SUBMISSION_FAILED = "pinkwebsite: submission failed"
 SUBJECT_PR_REQUEST_MADE = "pinkwebsite: pr request made"
@@ -447,11 +447,19 @@ def notify_thread_context_error(service, pr_number: int, message_id: str, error_
     except Exception as exc:
         print(f"Failed to send bot error alert email for PR #{pr_number}: {exc}")
 
-def has_acceptance_comment(pr) -> bool:
-    for comment in pr.get_issue_comments():
-        if ACCEPTED_COMMENT_MARKER in comment.body:
-            return True
-    return False
+def has_acceptance_marker(pr) -> bool:
+    return ACCEPTED_BODY_MARKER in (pr.body or "")
+
+
+def mark_acceptance_notified(pr):
+    body = (pr.body or "").rstrip()
+    if ACCEPTED_BODY_MARKER in body:
+        return
+    if body:
+        body = f"{body}\n\n{ACCEPTED_BODY_MARKER}"
+    else:
+        body = ACCEPTED_BODY_MARKER
+    pr.edit(body=body)
 
 
 def has_rejection_comment(pr) -> bool:
@@ -467,7 +475,8 @@ def send_accepted_notifications(service, repo, base_branch: str):
             continue
         if not pr.head.ref.startswith("submission/"):
             continue
-        if has_acceptance_comment(pr):
+
+        if has_acceptance_marker(pr):
             continue
 
         message_id = extract_message_id_from_pr_body(pr.body)
@@ -491,7 +500,7 @@ def send_accepted_notifications(service, repo, base_branch: str):
             "Your submission has been accepted and merged.",
             f"PR URL: {pr.html_url}\nThe website will update shortly.",
         )
-        pr.create_issue_comment(ACCEPTED_COMMENT_MARKER)
+        mark_acceptance_notified(pr)
         print(f"Sent accepted email for PR #{pr.number}")
 
 
@@ -501,7 +510,8 @@ def send_rejected_notifications(service, repo, base_branch: str):
             continue
         if not pr.head.ref.startswith("submission/"):
             continue
-        if has_rejection_comment(pr) or has_acceptance_comment(pr):
+
+        if has_rejection_comment(pr) or has_acceptance_marker(pr):
             continue
 
         message_id = extract_message_id_from_pr_body(pr.body)
