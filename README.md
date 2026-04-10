@@ -1,3 +1,7 @@
+# DO NOT INCLUDE ANY PERSONALLY IDENTIFIABLE INFORMATION IN YOUR EMAIL. 
+
+# THIS INCLUDES INFORMATION IN YOUR .hack FILE, IMAGE FILES, OR EVEN IN THE NAME OF SAID FILES. IT WILL BE MADE PUBLIC WHEN A PULL REQUEST IS CREATED. THIS CANNOT BE REVERTED.
+
 ## content format: .hack
 Submissions should follow the format of the following example:
     
@@ -19,10 +23,10 @@ More text after a divider.
 !photo_one.jpg
 ```
 
-If you need more clarification refer to previous [submissions](https://github.com/thepinkcommittee/pinkwebsite/tree/main/entries) or email us at [thepinkcommittee](mailto:thepinkcommittee@gmail.com).
+If you need more clarification refer to previous [submissions](https://github.com/thepinkcommittee/pinkwebsite/tree/main/entries) or email us at [thepinkcommittee@gmail.com](mailto:thepinkcommittee@gmail.com).
 
 ## how to submit a new entry
-Send an email to `thepinkcommittee@gmail.com` with the subject:
+Send an email to [thepinkcommittee@gmail.com](mailto:thepinkcommittee@gmail.com) with the subject:
 
 ```text
 pinkwebsite: submission
