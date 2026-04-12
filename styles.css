@@ -53,4 +53,8 @@ figure{margin:4px 0}
 
 .contact-email{display:block;text-align:center;margin:4px 0}
 
-@media (max-width: 600px){.banner img{display:none}}
+@media (max-width: 600px){
+	.banner img{display:none}
+	#news .hack-item > div{grid-template-columns:10ch minmax(0,1fr) minmax(0,var(--where-col,var(--news-where-col-width)))}
+	#news .when{white-space:normal;line-height:1.05}
+}
